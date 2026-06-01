@@ -61,6 +61,9 @@ CREATE TABLE IF NOT EXISTS orders (
 -- v1.2 migration: thêm cột return_reason nếu DB cũ chưa có
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS return_reason TEXT;
 
+-- v1.9: hẹn giờ giao (HH:MM text — null = giao ngay)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_at TEXT;
+
 CREATE TABLE IF NOT EXISTS zones (
   id         BIGINT PRIMARY KEY,
   lb         TEXT NOT NULL,

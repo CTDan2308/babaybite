@@ -6,6 +6,56 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.9.0] — 2026-06-02
+
+📋 **Bảng phân ca + Ping shipper + Hẹn giờ giao + Combobox gán nhân sự**
+
+### Added — Board view (Bảng phân ca)
+- View mặc định mới trong **Cài đặt → Lịch ca**: layout giống file Excel — **hàng = vai trò, cột = ca, ô = danh sách nhân sự**
+- Mỗi ô có sẵn `StaffCombo` — gõ tên/username để tìm nhanh + thêm
+- Click vào thẻ nhân sự để xoá khỏi ca
+- 4 view tổng cộng: Bảng (mới, default) / Theo vai trò / Calendar / Ma trận
+
+### Added — Hẹn giờ giao
+- Cột mới `orders.schedule_at TEXT` (`HH:MM` hoặc null)
+- OrderScreen: thêm input `type="time"` cho đơn ship (tùy chọn) — chip "⏰ Hẹn giao: 14:30"
+- Hiển thị nổi bật trong ShipperApp active card (banner xanh), trong KDS card, và danh sách OrderScreen
+- Mapper `orderFromDb/orderToDb` thêm `schA` ↔ `schedule_at`
+
+### Changed — Shipper KHÔNG còn tự nhận đơn
+- **Bỏ tab "Đơn chờ nhận"** + nút "🛵 Nhận đơn này" trong ShipperApp
+- Bỏ logic `claim()` self-claim — concurrency update
+- Tabs còn lại: **Đang giao** + **Lịch sử** (workflow rõ hơn)
+- Empty state: "Trưởng ca sẽ phân đơn cho bạn. Khi có đơn mới, bạn sẽ nhận được thông báo trên điện thoại (Telegram)..."
+- Realtime handler vẫn ping noti đơn `san_sang & sid=null` cho trưởng ca để chủ động phân
+
+### Added — Ping shipper từ trưởng ca
+- Nút **🔔 Ping** trên mỗi đơn đang giao (`da_lay`/`dang_giao`) trong ShipperScreen của trưởng ca
+- Gửi DM Telegram đến chat_id của shipper được gán: "Nhắc nhở từ Trưởng ca · Đơn ĐH001 · Hẹn giao 14:30 · Vui lòng xử lý ngay!"
+- Cảnh báo rõ nếu chưa cấu hình Telegram hoặc shipper chưa link chat
+
+### Added — Combobox `StaffCombo` (component generic)
+- Component mới `StaffCombo` reusable: text input tự gõ + dropdown filter theo `name` hoặc `username`
+- Áp dụng cho:
+  - Mỗi ô trong Board view ShiftSettings (gõ tên thêm nhân sự vào ca)
+  - HERO panel "Đơn cần phân shipper" trong ShipperScreen — gõ tên shipper thay vì chỉ click avatar
+- Vẫn giữ buttons quick-pick để khỏi mất UX nhanh (gợi ý ⭐ shipper rảnh nhất)
+
+### Migration
+```sql
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_at TEXT;
+```
+Hoặc chạy lại `supabase-schema.sql` (idempotent).
+
+### Why
+- **Board view**: CEO yêu cầu giao diện giống file Excel quen thuộc — role rows × shift columns, cell = list staff
+- **Bỏ self-claim**: tránh xung đột "đơn ai nhận" và để trưởng ca làm điều phối viên (đúng vai trò)
+- **Ping**: shipper có thể tắt tab → cần kênh push tin nhắn chủ động khi đơn gấp
+- **Hẹn giờ giao**: nhiều khách đặt trước → pha chế + shipper cần biết deadline để ưu tiên
+- **Combobox**: 1 ngày 30+ nhân sự, dropdown buttons dài → gõ vài ký tự nhanh hơn nhiều
+
+---
+
 ## [1.8.0] — 2026-05-30
 
 🔐 **Username login** + 🤖 **Telegram Bot POC**

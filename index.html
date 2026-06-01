@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>CLB Quản Lý Bán Hàng v1.6.1</title>
+<title>CLB Quản Lý Bán Hàng v1.9.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -136,8 +136,8 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 const orderId = num => "ĐH" + String(num).padStart(3,"0");
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
 const productToDb   = p => ({id:p.id,name:p.name,cat:p.cat,price:p.price,stock:p.stock,on_menu:p.on!==false,emoji:p.emoji,recipe:p.recipe});
-const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||""});
-const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null});
+const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||""});
+const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null});
 const shiftFromDb   = r => ({name:r.name,start:r.start_at,end:r.end_at});
 const shiftToDb     = s => ({name:s.name,start_at:s.start,end_at:s.end});
 
@@ -240,7 +240,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.8.0";
+const VERSION = "1.9.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -1009,6 +1009,51 @@ function Dashboard({orders,staff,currentUser,deleteOrder}){
    ORDER SCREEN
 ══════════════════════════════════════════════════════════ */
 /* v1.4: Searchable KPI combobox — hỗ trợ chọn người ngoài ca */
+/* v1.9: Generic staff combobox — tự gõ filter + dropdown. Trả về staff.id khi chọn. */
+function StaffCombo({staffList,onPick,placeholder="+ Thêm nhân sự...",accent="var(--or)",size="sm"}){
+  const [open,setOpen]=useState(false);
+  const [q,setQ]=useState("");
+  const ref=useRef(null);
+  useEffect(()=>{
+    if(!open) return;
+    const h=e=>{ if(ref.current && !ref.current.contains(e.target)){ setOpen(false); setQ(""); } };
+    document.addEventListener("mousedown",h);
+    return ()=>document.removeEventListener("mousedown",h);
+  },[open]);
+  const filtered=(staffList||[])
+    .filter(s=>!q || s.name.toLowerCase().includes(q.toLowerCase()) || (s.username||"").toLowerCase().includes(q.toLowerCase()))
+    .sort((a,b)=>a.name.localeCompare(b.name,"vi"));
+  const pad = size==="sm" ? "5px 8px" : "7px 10px";
+  const fs  = size==="sm" ? 11 : 12;
+  return (
+    <div ref={ref} style={{position:"relative",width:"100%"}}>
+      <input value={q} onChange={e=>{setQ(e.target.value); setOpen(true);}} onFocus={()=>setOpen(true)}
+        placeholder={placeholder}
+        style={{width:"100%",padding:pad,border:`1px dashed ${accent}66`,borderRadius:6,fontSize:fs,background:"#fff",color:"var(--text)",outline:"none"}}/>
+      {open && (
+        <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,minWidth:160,background:"#fff",border:"1px solid var(--bd)",borderRadius:6,boxShadow:"var(--sh-lg)",zIndex:60,maxHeight:220,overflowY:"auto"}}>
+          {filtered.length===0 && <div style={{padding:10,color:"var(--mut)",fontSize:11,textAlign:"center"}}>Không tìm thấy</div>}
+          {filtered.map(s=>{
+            const [tc,bg]=RC[s.role]||["#475569","#f5f5f5"];
+            return (
+              <div key={s.id} onClick={()=>{onPick(s.id); setOpen(false); setQ("");}}
+                style={{padding:"7px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:7,fontSize:11.5,borderBottom:"1px solid var(--bd2)"}}
+                onMouseEnter={e=>e.currentTarget.style.background="#FAFAFA"}
+                onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                <div style={{width:22,height:22,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</div>
+                  <div style={{fontSize:9.5,color:tc,fontWeight:600}}>{RL[s.role]||s.role}</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KpiPicker({staff,value,onChange,inShiftIds,inp}){
   const [open,setOpen]=useState(false);
   const [q,setQ]=useState("");
@@ -1068,7 +1113,7 @@ function KpiPicker({staff,value,onChange,inShiftIds,inp}){
 
 function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zones,categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
   const isAdmin = currentUser?.role === "admin";
-  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[]};
+  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:""};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
   const [cart,setCart] = useState({...EC});
@@ -1103,7 +1148,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
     if(!cart.items.length){toast("Giỏ hàng đang trống","warn");return;}
     const num = (orders.length ? Math.max(...orders.map(o=>o.num||0)) : 0) + 1;
     const id  = `ĐH${String(num).padStart(3,"0")}`;
-    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:"moi",pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note};
+    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:"moi",pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||""};
     setProducts(ps=>ps.map(p=>{const ci=cart.items.find(i=>i.pid===p.id);return ci?{...p,stock:Math.max(0,p.stock-ci.qty)}:p;}));
     setOrders(os=>[...os,o]);
     setCart({...EC,kpi:currentUser.id});
@@ -1212,6 +1257,19 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
                     <div style={{fontSize:9.5,color:cart.zone===i?"var(--or)":"var(--mut2)",marginTop:1}}>{z.lb}</div>
                   </button>
                 ))}
+              </div>
+              {/* v1.9: hẹn giờ giao */}
+              <div style={{marginTop:10,paddingTop:8,borderTop:"1px dashed var(--bd2)"}}>
+                <div style={lbl}><i className="ti ti-clock-hour-4" style={{fontSize:11,marginRight:3}}/>Hẹn giờ giao (tùy chọn)</div>
+                <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input type="time" value={cart.schA} onChange={e=>setCart(c=>({...c,schA:e.target.value}))}
+                    style={{...inp,padding:"7px 10px",flex:1}}/>
+                  {cart.schA && (
+                    <button onClick={()=>setCart(c=>({...c,schA:""}))} title="Xoá hẹn giờ"
+                      style={{padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",background:"#fff",cursor:"pointer",fontSize:11,color:"var(--mut)"}}>✕</button>
+                  )}
+                </div>
+                {cart.schA && <div style={{fontSize:10.5,color:"var(--or)",marginTop:4,fontWeight:600}}>⏰ Đơn sẽ được đánh dấu hẹn giao lúc <b>{cart.schA}</b></div>}
               </div>
             </div>
           )}
@@ -1438,6 +1496,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
                   {o.ph&&<span style={{color:"var(--mut)"}}> · {o.ph}</span>}
                   {o.adr&&<div style={{fontSize:11,color:"var(--mut)",marginTop:2}}><i className="ti ti-map-pin" style={{fontSize:11,marginRight:2}}/>{o.adr}</div>}
                 </div>
+                {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}>⏰ Hẹn giao: {o.schA}</div>}
                 <div style={{fontSize:11,color:"var(--mut)",marginBottom:o.note?6:8,lineHeight:1.55,background:"#FAFAFA",padding:"6px 9px",borderRadius:"var(--r-sm)"}}>{o.items.map(i=>`${i.name}×${i.qty}${i.note?` (${i.note})`:""}`).join(" · ")}</div>
                 {o.note&&<div style={{fontSize:11,color:"var(--or)",marginBottom:8,background:"var(--orl)",padding:"5px 9px",borderRadius:"var(--r-sm)",fontWeight:500}}><i className="ti ti-note" style={{fontSize:11,marginRight:3}}/>{o.note}</div>}
                 <div style={{fontSize:10.5,color:"var(--mut2)",marginBottom:9,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1945,6 +2004,7 @@ function ShipperOrderCard({o,staff,actions,showShipper=true}){
         <div style={{fontSize:12.5,color:"var(--text)",fontWeight:700,marginBottom:3}}>{o.cus}</div>
         {o.ph&&<div style={{fontSize:11,color:"var(--mut)",marginBottom:3,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-phone" style={{fontSize:12}}/><a href={`tel:${o.ph}`} style={{color:"var(--info)",textDecoration:"none",fontWeight:600}}>{o.ph}</a></div>}
         <div style={{fontSize:11,color:"var(--mut)",marginBottom:6,lineHeight:1.45,display:"flex",alignItems:"flex-start",gap:4}}><i className="ti ti-map-pin" style={{fontSize:12,marginTop:1,color:"var(--or)"}}/>{o.adr}</div>
+        {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4,border:"1px solid #93C5FD"}}>⏰ Hẹn giao: {o.schA}</div>}
         <div style={{fontSize:11,color:"var(--text2)",marginBottom:7,lineHeight:1.45,background:"#FAFAFA",padding:"5px 9px",borderRadius:"var(--r-sm)"}}>{o.items.map(i=>`${i.name}×${i.qty}`).join(", ")}</div>
         {o.returnReason&&<div style={{fontSize:11,color:"#9D174D",background:"#FCE7F3",borderRadius:"var(--r-sm)",padding:"5px 9px",marginBottom:7,fontWeight:500}}>↩️ {o.returnReason}</div>}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:actions?9:0,paddingTop:5,borderTop:"1px dashed var(--bd2)"}}>
@@ -1961,21 +2021,12 @@ function ShipperOrderCard({o,staff,actions,showShipper=true}){
    Tab: Pool (đơn chờ tự nhận) / Đang giao / Lịch sử
    Self-claim: tap "Nhận đơn" → UPDATE WHERE sid IS NULL (concurrency-safe) */
 function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,doReturn,onLogout,toast,connStatus,currentShift,onlineUsers}){
-  const [tab,setTab] = useState("active"); // pool | active | history
+  // v1.9: bỏ tab pool — shipper KHÔNG tự nhận đơn nữa, chỉ trưởng ca phân
+  const [tab,setTab] = useState("active"); // active | history
   const [focusId,setFocusId] = useState(null);
-  const [claimingNum,setClaimingNum] = useState(null);
   const [returnFor,setReturnFor] = useState(null);
   const [now,setNow] = useState(new Date());
   useEffect(()=>{const t=setInterval(()=>setNow(new Date()),30000);return()=>clearInterval(t);},[]);
-
-  // Pool: đơn ship sẵn sàng chưa có shipper → bất kỳ ai cũng có thể claim
-  const pool = orders.filter(o=>o.type==="ship" && o.st==="san_sang" && (o.sid==null));
-  // Auto-switch sang tab pool nếu pool có đơn và đang ở active rỗng
-  useEffect(()=>{
-    if (pool.length>0 && tab==="active") {
-      // không auto-switch, chỉ show badge
-    }
-  },[pool.length]);
 
   const mine = orders.filter(o=>o.type==="ship" && o.sid===currentUser.id);
   const active = mine.filter(o=>["san_sang","da_lay","dang_giao"].includes(o.st))
@@ -2026,25 +2077,6 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
 
   const mapsUrl = (adr) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(adr||"")}`;
   const itemTotal = (o) => (o.items||[]).reduce((s,i)=>s+i.qty*i.p,0) - (o.disc||0);
-
-  // Self-claim: concurrency-safe — chỉ update nếu sid vẫn null
-  const claim = async (order) => {
-    if (claimingNum) return; // tránh double-tap
-    setClaimingNum(order.num);
-    const {data,error} = await sb.from("orders")
-      .update({sid: currentUser.id})
-      .eq("num", order.num)
-      .is("sid", null)
-      .select();
-    setClaimingNum(null);
-    if (error) { toast("Lỗi nhận đơn: "+error.message, "error"); return; }
-    if (!data || data.length===0) {
-      toast("Đơn đã được shipper khác nhận", "warn");
-      return;
-    }
-    toast(`✓ Bạn đã nhận đơn ${order.id}`, "success");
-    setTab("active"); setFocusId(order.id);
-  };
 
   return (
     <div style={{height:"100vh",background:"#F5F5F5",display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,-apple-system,sans-serif",overflow:"hidden"}}>
@@ -2098,10 +2130,9 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
         </div>
       </div>
 
-      {/* ── Tab switcher ── */}
+      {/* ── Tab switcher (v1.9: bỏ tab pool) ── */}
       <div style={{display:"flex",background:"#fff",borderBottom:"1px solid var(--bd)",padding:"0 12px",gap:0,flexShrink:0}}>
         {[
-          {k:"pool",   l:"Đơn chờ nhận", c:pool.length,   hl:pool.length>0},
           {k:"active", l:"Đang giao",    c:active.length},
           {k:"history",l:"Lịch sử",      c:finished.length}
         ].map(t=>(
@@ -2119,74 +2150,14 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
       {/* ── Content area (scrollable) ── */}
       <div style={{flex:1,overflowY:"auto",background:"#F5F5F5"}}>
 
-      {/* ── POOL TAB: Đơn chờ shipper nhận (self-claim) ── */}
-      {tab==="pool" && (
-        <div style={{padding:14,display:"flex",flexDirection:"column",gap:10}}>
-          <div style={{background:"linear-gradient(135deg,#FEF3C7,#FDE68A)",border:"1px solid #F59E0B33",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:9}}>
-            <i className="ti ti-info-circle" style={{fontSize:18,color:"#D97706",flexShrink:0}}/>
-            <div style={{fontSize:11.5,color:"#92400E",lineHeight:1.4}}>
-              <b>Tự nhận đơn</b> · Đơn đầu tiên bạn tap "Nhận đơn" sẽ về bạn. Đơn đã được người khác lấy sẽ tự biến mất.
-            </div>
-          </div>
-
-          {pool.length===0 && (
-            <div style={{textAlign:"center",padding:"50px 20px",color:"var(--mut)"}}>
-              <div style={{fontSize:46,marginBottom:10,opacity:.4}}>📭</div>
-              <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>Chưa có đơn chờ</div>
-              <div style={{fontSize:11.5,marginTop:5}}>Khi bếp pha xong đơn ship, đơn sẽ xuất hiện ở đây</div>
-            </div>
-          )}
-
-          {pool.map(o=>{
-            const isClaiming = claimingNum===o.num;
-            return (
-              <div key={o.id} style={{background:"#fff",borderRadius:12,padding:14,border:"2px solid #FCD34D",boxShadow:"0 4px 14px rgba(245,158,11,.15)",position:"relative"}}>
-                <div style={{position:"absolute",top:0,right:0,background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",fontSize:10,fontWeight:800,padding:"3px 10px",borderBottomLeftRadius:10,letterSpacing:.5}}>MỚI</div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
-                  <span style={{fontFamily:"ui-monospace,monospace",fontSize:13,fontWeight:800,color:"var(--or)"}}>{o.id}</span>
-                  <span style={{fontSize:11,color:"var(--mut)",display:"flex",alignItems:"center",gap:3}}>
-                    <i className="ti ti-clock" style={{fontSize:11}}/>{o.t}
-                  </span>
-                </div>
-                <div style={{marginBottom:8}}>
-                  <div style={{fontSize:11,color:"var(--mut)",fontWeight:600,textTransform:"uppercase",marginBottom:2}}>Khách</div>
-                  <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>{o.cus}</div>
-                </div>
-                <div style={{marginBottom:8,display:"flex",gap:6,alignItems:"flex-start"}}>
-                  <i className="ti ti-map-pin" style={{fontSize:16,color:"var(--or)",flexShrink:0,marginTop:2}}/>
-                  <div style={{flex:1,fontSize:13,color:"var(--text2)",lineHeight:1.4}}>{o.adr||"(không có địa chỉ)"}</div>
-                </div>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,padding:"7px 10px",background:"#F9FAFB",borderRadius:8}}>
-                  <span style={{fontSize:11.5,color:"var(--mut)"}}>{(o.items||[]).reduce((s,i)=>s+i.qty,0)} món · {o.pay==="qr"?"QR":"Tiền mặt"}</span>
-                  <span style={{fontSize:15,fontWeight:800,color:"var(--or)"}}>+{fmt(o.dFee||0)}</span>
-                </div>
-                <button onClick={()=>claim(o)} disabled={isClaiming}
-                  style={{width:"100%",padding:"14px",background:isClaiming?"#9CA3AF":"linear-gradient(135deg,#22C55E,#15803D)",color:"#fff",border:"none",borderRadius:10,fontSize:14,fontWeight:800,cursor:isClaiming?"wait":"pointer",boxShadow:"0 4px 14px rgba(34,197,94,.3)"}}>
-                  {isClaiming ? "Đang nhận..." : "🛵 Nhận đơn này"}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
       {/* ── Content ── */}
       {tab==="active" && (
         <div style={{flex:1,padding:"14px",display:"flex",flexDirection:"column",gap:14}}>
           {!current && (
             <div style={{textAlign:"center",padding:"60px 20px",color:"var(--mut)"}}>
               <div style={{fontSize:54,marginBottom:12,opacity:.4}}>☕</div>
-              <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>Chưa có đơn đang giao</div>
-              <div style={{fontSize:11.5,marginTop:6}}>
-                {pool.length>0
-                  ? <span>Có <b style={{color:"var(--or)"}}>{pool.length} đơn chờ</b> ở tab "Đơn chờ nhận" — tap để xem</span>
-                  : "Khi có đơn mới, bạn có thể tự nhận ở tab \"Đơn chờ nhận\""}
-              </div>
-              {pool.length>0 && (
-                <button onClick={()=>setTab("pool")} className="btn-pri" style={{marginTop:14,padding:"10px 20px",borderRadius:8,fontSize:13,fontWeight:700}}>
-                  Xem đơn chờ →
-                </button>
-              )}
+              <div style={{fontSize:15,fontWeight:700,color:"var(--text)"}}>Chưa có đơn nào</div>
+              <div style={{fontSize:11.5,marginTop:6}}>Trưởng ca sẽ phân đơn cho bạn. Khi có đơn mới, bạn sẽ nhận được thông báo trên điện thoại (Telegram) hoặc trình duyệt.</div>
             </div>
           )}
 
@@ -2221,6 +2192,17 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
                     )}
                   </div>
                 </div>
+
+                {/* v1.9: Hẹn giờ giao */}
+                {current.schA && (
+                  <div style={{padding:"10px 14px",background:"#EFF6FF",borderBottom:"1px dashed var(--bd2)",display:"flex",alignItems:"center",gap:9}}>
+                    <i className="ti ti-clock-hour-4" style={{fontSize:20,color:"#1E40AF",flexShrink:0}}/>
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:11,color:"#1E40AF",fontWeight:700,opacity:.85}}>HẸN GIAO LÚC</div>
+                      <div style={{fontSize:17,fontWeight:800,color:"#1E40AF"}}>{current.schA}</div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Address block — tap to open Maps */}
                 <div style={{padding:"14px",borderBottom:"1px dashed var(--bd2)"}}>
@@ -2381,6 +2363,18 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
   const pickup    = oid => setSt(oid,{st:"da_lay"},`Đã ghi nhận lấy đơn ${oid}`);
   const startShip = oid => setSt(oid,{st:"dang_giao"},`Bắt đầu giao đơn ${oid}`);
   const complete  = oid => setSt(oid,{st:"hoan_thanh"},`✓ Giao thành công đơn ${oid}`);
+  // v1.9: Ping shipper qua Telegram
+  const pingShipper = async (o) => {
+    if (!o.sid) { toast("Đơn này chưa có shipper","warn"); return; }
+    const sh = staff.find(s=>s.id===o.sid);
+    if (!sh) { toast("Không tìm thấy shipper","error"); return; }
+    if (!TG.isOn()) { toast("Chưa cấu hình Telegram Bot (Cài đặt → Telegram Bot)","warn"); return; }
+    if (!sh.telegram_chat_id) { toast(`${sh.name} chưa link chat Telegram`,"warn"); return; }
+    const msg = `🔔 <b>Nhắc nhở từ Trưởng ca</b>\nĐơn <b>${o.id}</b> · ${o.cus}${o.ph?` · ${o.ph}`:""}\n📍 ${o.adr||"(tại chỗ)"}${o.schA?`\n⏰ <b>Hẹn giao: ${o.schA}</b>`:""}\n💰 Phí ship: ${fmt(o.dFee||0)}\n💬 Vui lòng xử lý ngay!`;
+    const r = await TG.send(sh.telegram_chat_id, msg);
+    if (r && r.ok) toast(`✓ Đã ping ${sh.name} qua Telegram`,"success");
+    else toast(`Gửi ping thất bại${r?.description?`: ${r.description}`:""}`,"error");
+  };
   const cancel    = oid => { if(!confirm("Huỷ đơn này?")) return; restoreStock(oid); setSt(oid,{st:"huy"},"Đã huỷ đơn · đã hoàn kho","warn"); };
   // Hoàn hàng: hoàn kho cho đồ pha chế thì không hợp lý (đã pha rồi), nhưng đồ san_co/kho thì có thể trả lại.
   // Để đơn giản giai đoạn này: KHÔNG hoàn kho khi hoàn hàng — đó là hàng đã đi ra.
@@ -2427,7 +2421,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
             <div style={{width:36,height:36,borderRadius:"50%",background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"var(--sh-or)",animation:"pulse 2s infinite"}}>🚨</div>
             <div style={{flex:1}}>
               <div style={{fontSize:14,fontWeight:800,color:"var(--or)"}}>{waitUnassigned.length} đơn cần phân shipper</div>
-              <div style={{fontSize:10.5,color:"var(--text2)"}}>Tap avatar shipper bên dưới để gán. Shipper cũng có thể tự nhận trong app của họ.</div>
+              <div style={{fontSize:10.5,color:"var(--text2)"}}>Tap avatar shipper bên dưới để gán, hoặc gõ tên ở ô tìm. Shipper sẽ nhận noti Telegram ngay.</div>
             </div>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
@@ -2465,6 +2459,14 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
                   })()}
                   {shippers.length===0&&<span style={{fontSize:10.5,color:"var(--err)",fontStyle:"italic"}}>Không có shipper trong ca — kiểm tra Lịch ca</span>}
                 </div>
+                {/* v1.9: combo gõ tên — fallback khi nhiều shipper */}
+                {shippers.length>0 && (
+                  <div style={{marginTop:7,maxWidth:240}}>
+                    <StaffCombo staffList={shippers} accent="var(--or)"
+                      placeholder="🔍 Hoặc gõ tên shipper..."
+                      onPick={sid=>assign(o.id, sid)}/>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -2553,6 +2555,10 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
                         </div>
                       )}
                       <div style={{display:"flex",gap:5}}>
+                        {canAssign && o.sid && (
+                          <button onClick={()=>pingShipper(o)} title="Gửi noti Telegram cho shipper"
+                            style={{fontSize:10.5,padding:"7px 10px",background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:"var(--r-sm)",color:"#1E40AF",cursor:"pointer",fontWeight:700}}>🔔 Ping</button>
+                        )}
                         <button onClick={()=>setReturnFor(o)} style={{flex:1,fontSize:10.5,padding:"7px",background:"#FCE7F3",border:"none",borderRadius:"var(--r-sm)",color:"#9D174D",cursor:"pointer",fontWeight:700}}>↩ Hoàn hàng</button>
                         <button onClick={()=>complete(o.id)} style={{flex:2,fontSize:10.5,padding:"7px",background:"linear-gradient(135deg,#22C55E,#15803D)",border:"none",borderRadius:"var(--r-sm)",color:"#fff",cursor:"pointer",fontWeight:700,boxShadow:"var(--sh-sm)"}}>✓ Đã giao</button>
                       </div>
@@ -2997,7 +3003,7 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
   const [addShift,setAddShift] = useState(false);
   const [sf,setSf] = useState({name:"",start_at:"",end_at:""});
   const [pickerFor,setPickerFor] = useState(null);   // {shift_id}
-  const [view,setView] = useState("role");            // role | calendar | matrix
+  const [view,setView] = useState("board");           // board | role | calendar | matrix
   const [roleAddFor,setRoleAddFor] = useState(null);  // {shift_id, role} cho role-view
 
   const submitShift = () => {
@@ -3103,7 +3109,9 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
       <div className="card" style={{padding:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
           <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>📅 Lịch chia ca trong ngày</div>
-          <div style={{display:"flex",gap:4,background:"#f5f5f5",borderRadius:6,padding:3}}>
+          <div style={{display:"flex",gap:4,background:"#f5f5f5",borderRadius:6,padding:3,flexWrap:"wrap"}}>
+            <button onClick={()=>setView("board")}
+              style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="board"?"#fff":"transparent",color:view==="board"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="board"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>📋 Bảng phân ca</button>
             <button onClick={()=>setView("role")}
               style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="role"?"#fff":"transparent",color:view==="role"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="role"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>👥 Theo vai trò</button>
             <button onClick={()=>setView("calendar")}
@@ -3112,6 +3120,69 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
               style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="matrix"?"#fff":"transparent",color:view==="matrix"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="matrix"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>📊 Ma trận</button>
           </div>
         </div>
+
+        {/* v1.9: BOARD VIEW — hàng=role, cột=ca, ô=danh sách nhân sự (giống bảng Excel) */}
+        {view==="board"&&(
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,minWidth:Math.max(600, 180 + sortedShifts.length*150)}}>
+              <thead>
+                <tr style={{background:"linear-gradient(135deg,#1E40AF,#2563EB)",color:"#fff"}}>
+                  <th style={{padding:"10px 12px",textAlign:"left",fontSize:11,fontWeight:800,letterSpacing:.3,minWidth:140,position:"sticky",left:0,background:"#1E40AF",zIndex:2,borderRight:"1px solid rgba(255,255,255,.2)"}}>Vai trò \ Ca</th>
+                  {sortedShifts.map(sh=>(
+                    <th key={sh.id} style={{padding:"10px 8px",textAlign:"center",fontSize:11,fontWeight:800,minWidth:150,borderRight:"1px solid rgba(255,255,255,.15)"}}>
+                      <div>{sh.name}</div>
+                      <div style={{fontSize:10,opacity:.85,fontWeight:500,marginTop:2}}>{sh.start_at}–{sh.end_at}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {ROLE_NON_OFF.filter(r=>r.v!=="admin").map(roleOpt=>(
+                  <tr key={roleOpt.v} style={{borderBottom:"1px solid #f0f0f0"}}>
+                    <td style={{padding:"10px 12px",position:"sticky",left:0,background:"#fff",zIndex:1,borderRight:"1px solid #f0f0f0",fontWeight:800,fontSize:12,color:roleOpt.c}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{width:10,height:10,borderRadius:"50%",background:roleOpt.c,flexShrink:0}}/>
+                        {roleOpt.l}
+                      </div>
+                    </td>
+                    {sortedShifts.map(sh=>{
+                      const inCell = shiftAssignments.filter(a=>a.shift_id===sh.id && a.role===roleOpt.v);
+                      const inShift = shiftAssignments.filter(a=>a.shift_id===sh.id && a.role!=="off");
+                      const availableStaff = staff.filter(s=>s.active && !inShift.find(a=>a.staff_id===s.id));
+                      return (
+                        <td key={sh.id} style={{padding:7,verticalAlign:"top",borderRight:"1px solid #f5f5f5",background:roleOpt.bg+"50"}}>
+                          <div style={{display:"flex",flexDirection:"column",gap:5,minHeight:40}}>
+                            {inCell.map(a=>{
+                              const s=staff.find(x=>x.id===a.staff_id);
+                              if(!s) return null;
+                              return (
+                                <button key={s.id} onClick={()=>{if(confirm(`Xoá ${s.name} khỏi ${roleOpt.l} của ${sh.name}?`)) upsertAssignment(sh.id,s.id,"off");}}
+                                  title="Click để xoá khỏi ca"
+                                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"#fff",border:`1px solid ${roleOpt.c}55`,borderRadius:"var(--r-pill)",cursor:"pointer",fontSize:11,textAlign:"left"}}>
+                                  <div style={{width:18,height:18,borderRadius:"50%",background:roleOpt.bg,color:roleOpt.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
+                                  <span style={{color:"var(--text)",fontWeight:600,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</span>
+                                </button>
+                              );
+                            })}
+                            <StaffCombo staffList={availableStaff} accent={roleOpt.c}
+                              placeholder={inCell.length===0?"+ Gõ tên...":"+ Thêm..."}
+                              onPick={sid=>upsertAssignment(sh.id, sid, roleOpt.v)}/>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                {sortedShifts.length===0 && (
+                  <tr><td colSpan={2} style={{padding:24,textAlign:"center",color:"var(--mut)",fontSize:12}}>Chưa có ca nào — thêm ca ở trên trước.</td></tr>
+                )}
+              </tbody>
+            </table>
+            <div style={{marginTop:12,padding:"10px 12px",background:"linear-gradient(90deg,#EFF6FF,#DBEAFE)",borderRadius:8,fontSize:11,color:"#1E40AF",lineHeight:1.6,border:"1px solid #93C5FD"}}>
+              💡 <b>Bảng phân ca:</b> Hàng = vai trò, cột = ca. Mỗi ô gõ tên để tìm + thêm nhân sự. Click thẻ tên để xoá khỏi ca. Mỗi nhân sự chỉ có 1 vai trò trong 1 ca.
+            </div>
+          </div>
+        )}
 
         {/* ROLE-FIRST VIEW — mỗi ca chia thành buckets theo role */}
         {view==="role"&&(
