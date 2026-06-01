@@ -6,6 +6,31 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.9.1] — 2026-06-02
+
+🎯 **Rebuild flow phân shipper — 3-step: Chọn → Chốt → Ping**
+
+### Changed — ShipperScreen (trưởng ca/admin)
+- HERO panel **"Điều phối shipper"** hoàn toàn mới, thay thế HERO cũ + inline assign trong column san_sang
+- Bao gồm cả đơn `pha_che` (đang pha) + `san_sang` (sẵn sàng) → trưởng ca pre-assign từ trước khi pha xong
+- **Lọc shipper theo ca hoạt động** dựa trên `shift_assignments` (không còn lấy tất cả shipper static role)
+- 3 trạng thái per card (state machine):
+  - **A. Chưa chọn** → hiện chips shippers in-shift với load + StaffCombo gõ tên
+  - **B. Đã chọn, chưa chốt** → preview shipper + 2 nút "↺ Chọn lại" / "✓ Chốt phân công"
+  - **C. Đã chốt** → hiện thông tin shipper + nút **"🔔 Gửi thông báo Telegram"** (disabled nếu shipper chưa link chat) + "↻ Đổi shipper"
+- Local state `pendingPick[oid]=sid` giữ pick chưa lưu (không sync DB cho đến khi chốt)
+- Kanban column `san_sang`: bỏ inline assign buttons (đã refactor lên HERO), chỉ hiện status text
+
+### Why
+- 1-tap auto-assign cũ → dễ click nhầm, không có cơ hội xem lại tải shipper trước khi chốt
+- 3-step minh bạch: trưởng ca thấy rõ ai được chọn, load bao nhiêu, có Telegram OK không → mới chốt
+- Tách "chốt phân công" và "gửi noti" → trưởng ca có thể chốt im lặng (shipper đứng cạnh) hoặc chốt + ping (shipper xa)
+
+### Migration
+Không cần — pure UI refactor, không thay schema/DB.
+
+---
+
 ## [1.9.0] — 2026-06-02
 
 📋 **Bảng phân ca + Ping shipper + Hẹn giờ giao + Combobox gán nhân sự**

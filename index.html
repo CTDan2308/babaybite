@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>CLB Quản Lý Bán Hàng v1.9.0</title>
+<title>CLB Quản Lý Bán Hàng v1.9.1</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -240,7 +240,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.9.0";
+const VERSION = "1.9.1";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -2332,13 +2332,22 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
   );
 }
 
-function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effectiveRole,toast}){
+function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effectiveRole,toast,shiftAssignments=[],currentShift=null}){
   const [returnFor,setReturnFor] = useState(null);
+  // v1.9.1: 2-step assign — chọn shipper rồi mới chốt
+  const [pendingPick,setPendingPick] = useState({}); // {[orderId]: shipperId}
   const isShipper   = effectiveRole==="shipper";
   const canAssign   = effectiveRole==="truong_ca" || effectiveRole==="admin";
 
   const ship    = orders.filter(o=>o.type==="ship");
-  const shippers= staff.filter(s=>s.role==="shipper"&&s.active);
+  // v1.9.1: shipper ĐANG TRONG CA HOẠT ĐỘNG (theo shift_assignments, fallback role mặc định nếu chưa có ca)
+  const shippers = currentShift
+    ? staff.filter(s=>{
+        if (!s.active) return false;
+        const a = shiftAssignments.find(x=>x.shift_id===currentShift.id && x.staff_id===s.id);
+        return a ? a.role==="shipper" : false;
+      })
+    : staff.filter(s=>s.role==="shipper" && s.active);
 
   const setSt = (oid,patch,msg,type="success") => {
     setOrders(os=>os.map(o=>o.id===oid?{...o,...patch}:o));
@@ -2396,9 +2405,23 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
     {l:"Hoàn hàng",   v:returned.length,ic:"ti-arrow-back",  bg:"#fce7f3",tc:"#9d174d"},
   ];
 
-  // v1.5: tách wait thành unassigned (pool tự nhận) + assigned (đã có shipper)
-  const waitUnassigned = wait.filter(o=>o.sid==null);
-  const waitAssigned   = wait.filter(o=>o.sid!=null);
+  // v1.9.1: cần điều phối = ship đang chuẩn bị (pha_che) + sẵn sàng (san_sang)
+  const needCoord = ship.filter(o=>["pha_che","san_sang"].includes(o.st)).sort((a,b)=>{
+    // Đã có sid xuống cuối (vì đã chốt rồi), san_sang lên trước pha_che
+    const aSid = a.sid?1:0, bSid = b.sid?1:0;
+    if (aSid !== bSid) return aSid-bSid;
+    if (a.st !== b.st) return a.st==="san_sang"?-1:1;
+    return a.num-b.num;
+  });
+  const shipperLoad = sh => orders.filter(x=>x.sid===sh.id&&["san_sang","da_lay","dang_giao"].includes(x.st)).length;
+  const setPick = (oid, sid) => setPendingPick(p=>({...p, [oid]:sid}));
+  const clearPick = oid => setPendingPick(p=>{const n={...p}; delete n[oid]; return n;});
+  const confirmAssign = (o) => {
+    const sid = pendingPick[o.id];
+    if (!sid) return;
+    assign(o.id, sid);
+    clearPick(o.id);
+  };
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
@@ -2414,61 +2437,140 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
         ))}
       </div>
 
-      {/* v1.5: HERO — Đơn cần phân shipper (nổi bật) */}
-      {canAssign && waitUnassigned.length>0 && (
+      {/* v1.9.1: ĐIỀU PHỐI SHIPPER — 3-step flow: Chọn → Chốt → Ping */}
+      {canAssign && needCoord.length>0 && (
         <div style={{background:"linear-gradient(135deg,#FFF4F0 0%,#FFEDE5 100%)",border:"2px solid var(--or)",borderRadius:12,padding:14,marginBottom:14,boxShadow:"0 4px 16px rgba(238,77,45,.12)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:10}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"var(--sh-or)",animation:"pulse 2s infinite"}}>🚨</div>
-            <div style={{flex:1}}>
-              <div style={{fontSize:14,fontWeight:800,color:"var(--or)"}}>{waitUnassigned.length} đơn cần phân shipper</div>
-              <div style={{fontSize:10.5,color:"var(--text2)"}}>Tap avatar shipper bên dưới để gán, hoặc gõ tên ở ô tìm. Shipper sẽ nhận noti Telegram ngay.</div>
+          <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:12,flexWrap:"wrap"}}>
+            <div style={{width:36,height:36,borderRadius:"50%",background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"var(--sh-or)"}}>🎯</div>
+            <div style={{flex:1,minWidth:180}}>
+              <div style={{fontSize:14,fontWeight:800,color:"var(--or)"}}>Điều phối shipper · {needCoord.length} đơn</div>
+              <div style={{fontSize:10.5,color:"var(--text2)"}}>1️⃣ Chọn shipper · 2️⃣ Xác nhận chốt · 3️⃣ Gửi thông báo Telegram</div>
+            </div>
+            {/* Pool shipper trong ca */}
+            <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"var(--text2)",background:"#fff",padding:"6px 11px",borderRadius:"var(--r-pill)",border:"1px solid var(--bd)"}}>
+              <i className="ti ti-users" style={{fontSize:13,color:"var(--or)"}}/>
+              <span>Shipper trong ca: <b style={{color:"var(--or)"}}>{shippers.length}</b></span>
             </div>
           </div>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
-            {waitUnassigned.map(o=>(
-              <div key={o.id} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid var(--bd)",boxShadow:"var(--sh-sm)"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7}}>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontFamily:"ui-monospace,monospace",fontSize:12,fontWeight:800,color:"var(--or)"}}>{o.id}</span>
-                    <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{o.cus}</span>
+
+          {shippers.length===0 && (
+            <div style={{background:"#FEE2E2",border:"1px solid #FCA5A5",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:11.5,color:"#B91C1C",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
+              <i className="ti ti-alert-triangle" style={{fontSize:14}}/>
+              Không có shipper nào đang trực trong ca hiện tại. Vào <b>Cài đặt → Lịch ca</b> để phân shipper vào ca.
+            </div>
+          )}
+
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {needCoord.map(o=>{
+              const isPrep = o.st==="pha_che";
+              const hasSid = !!o.sid;
+              const sh = hasSid ? staff.find(s=>s.id===o.sid) : null;
+              const picked = pendingPick[o.id];
+              const pickedSh = picked ? staff.find(s=>s.id===picked) : null;
+              const tgReady = TG.isOn() && sh?.telegram_chat_id;
+              const loads = shippers.map(s=>({s, load:shipperLoad(s)}));
+              const minLoad = loads.length ? Math.min(...loads.map(l=>l.load)) : 0;
+
+              return (
+                <div key={o.id} style={{background:"#fff",borderRadius:10,padding:"11px 13px",border:`1.5px solid ${hasSid?"#22C55E":"var(--bd)"}`,boxShadow:"var(--sh-sm)"}}>
+                  {/* Header */}
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:7,gap:6,flexWrap:"wrap"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontFamily:"ui-monospace,monospace",fontSize:12.5,fontWeight:800,color:"var(--or)"}}>{o.id}</span>
+                      <Bdg s={o.st}/>
+                      {isPrep && <span style={{fontSize:10,padding:"2px 7px",background:"#FEF3C7",color:"#92400E",borderRadius:"var(--r-pill)",fontWeight:700}}>⏳ Đang pha</span>}
+                      <span style={{fontSize:12,fontWeight:700,color:"var(--text)"}}>{o.cus}</span>
+                      {o.ph && <span style={{fontSize:10.5,color:"var(--mut)"}}>· {o.ph}</span>}
+                    </div>
+                    <span style={{fontSize:13,fontWeight:800,color:"var(--or)"}}>+{fmt(o.dFee||0)}</span>
                   </div>
-                  <span style={{fontSize:13,fontWeight:800,color:"var(--or)"}}>+{fmt(o.dFee||0)}</span>
-                </div>
-                <div style={{fontSize:11.5,color:"var(--text2)",marginBottom:9,display:"flex",alignItems:"center",gap:4}}>
-                  <i className="ti ti-map-pin" style={{fontSize:13,color:"var(--or)"}}/>{o.adr||"—"}
-                </div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                  <span style={{fontSize:10.5,color:"var(--mut)",fontWeight:700,alignSelf:"center",marginRight:4}}>Gán:</span>
-                  {/* v1.6: Suggest shipper rảnh nhất (load ít nhất). Load = số đơn active */}
-                  {(() => {
-                    const loads = shippers.map(sh=>({sh, load: orders.filter(x=>x.sid===sh.id&&["san_sang","da_lay","dang_giao"].includes(x.st)).length}));
-                    const minLoad = loads.length ? Math.min(...loads.map(l=>l.load)) : 0;
-                    return loads.map(({sh,load})=>{
-                      const busy = load>0;
-                      const suggested = !busy || (loads.length>0 && load===minLoad);
-                      return (
-                        <button key={sh.id} onClick={()=>assign(o.id,sh.id)} title={`${load} đơn đang giao${suggested?" · gợi ý":""}`}
-                          style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",background:busy?"#FEF3C7":"#DCFCE7",border:`${suggested?"2px":"1.5px"} solid ${busy?"#F59E0B":"#22C55E"}`,borderRadius:"var(--r-pill)",cursor:"pointer",fontSize:11.5,fontWeight:700,color:busy?"#92400E":"#15803D",position:"relative"}}>
-                          {suggested && load===minLoad && load===0 && <span style={{position:"absolute",top:-7,right:-3,fontSize:11}}>⭐</span>}
-                          <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",color:busy?"#92400E":"#15803D",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(sh.name)}</div>
-                          {sh.name.split(" ").slice(-1)[0]}
-                          {busy && <span style={{fontSize:9}}>🛵{load}</span>}
+                  <div style={{display:"flex",gap:10,flexWrap:"wrap",marginBottom:9,fontSize:11.5,color:"var(--text2)"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:180}}>
+                      <i className="ti ti-map-pin" style={{fontSize:13,color:"var(--or)"}}/>{o.adr||"—"}
+                    </div>
+                    {o.schA && <span style={{fontSize:11,padding:"3px 8px",background:"#EFF6FF",color:"#1E40AF",border:"1px solid #93C5FD",borderRadius:"var(--r-pill)",fontWeight:700}}>⏰ {o.schA}</span>}
+                  </div>
+
+                  {/* STATE A: chưa có sid, chưa chọn — show shipper chips + combo */}
+                  {!hasSid && !picked && shippers.length>0 && (
+                    <div style={{background:"#FAFAFA",border:"1px dashed var(--bd)",borderRadius:8,padding:"9px 10px"}}>
+                      <div style={{fontSize:11,color:"var(--text2)",fontWeight:700,marginBottom:7,display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{background:"var(--or)",color:"#fff",width:18,height:18,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>1</span>
+                        Chọn shipper trong ca
+                      </div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:8}}>
+                        {loads.map(({s,load})=>{
+                          const busy = load>0;
+                          const suggested = load===minLoad;
+                          return (
+                            <button key={s.id} onClick={()=>setPick(o.id, s.id)} title={`${load} đơn đang giao${suggested?" · gợi ý":""}`}
+                              style={{display:"flex",alignItems:"center",gap:5,padding:"6px 10px",background:busy?"#FEF3C7":"#DCFCE7",border:`${suggested?"2px":"1.5px"} solid ${busy?"#F59E0B":"#22C55E"}`,borderRadius:"var(--r-pill)",cursor:"pointer",fontSize:11.5,fontWeight:700,color:busy?"#92400E":"#15803D",position:"relative"}}>
+                              {suggested && load===0 && <span style={{position:"absolute",top:-7,right:-3,fontSize:11}}>⭐</span>}
+                              <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(s.name)}</div>
+                              {s.name}{busy && <span style={{fontSize:9,marginLeft:2}}>🛵{load}</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div style={{maxWidth:280}}>
+                        <StaffCombo staffList={shippers} accent="var(--or)"
+                          placeholder="🔍 Hoặc gõ tên shipper..."
+                          onPick={sid=>setPick(o.id, sid)}/>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STATE B: đã chọn, chưa chốt — show confirm/cancel */}
+                  {!hasSid && picked && pickedSh && (
+                    <div style={{background:"linear-gradient(135deg,#FFFBEB,#FEF3C7)",border:"2px solid #F59E0B",borderRadius:8,padding:"10px 12px"}}>
+                      <div style={{fontSize:11,color:"#92400E",fontWeight:700,marginBottom:8,display:"flex",alignItems:"center",gap:5}}>
+                        <span style={{background:"#F59E0B",color:"#fff",width:18,height:18,borderRadius:"50%",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>2</span>
+                        Xác nhận chốt shipper?
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9,padding:"7px 10px",background:"#fff",borderRadius:6}}>
+                        <div style={{width:30,height:30,borderRadius:"50%",background:"#DCFCE7",color:"#15803D",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800}}>{inits(pickedSh.name)}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"var(--text)"}}>{pickedSh.name}</div>
+                          <div style={{fontSize:10.5,color:"var(--mut)"}}>Đang giao: <b>{shipperLoad(pickedSh)}</b> đơn · {pickedSh.telegram_chat_id?"✓ Có Telegram":"⚠ Chưa link Telegram"}</div>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>clearPick(o.id)}
+                          style={{flex:1,padding:"9px",background:"#fff",border:"1.5px solid var(--bd)",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,color:"var(--text2)"}}>↺ Chọn lại</button>
+                        <button onClick={()=>confirmAssign(o)}
+                          style={{flex:2,padding:"9px",background:"linear-gradient(135deg,#22C55E,#15803D)",border:"none",borderRadius:6,cursor:"pointer",fontSize:12.5,fontWeight:800,color:"#fff",boxShadow:"0 2px 8px rgba(34,197,94,.3)"}}>✓ Chốt phân công</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* STATE C: đã chốt — show shipper info + Ping + đổi */}
+                  {hasSid && sh && (
+                    <div style={{background:"#F0FDF4",border:"1.5px solid #22C55E",borderRadius:8,padding:"10px 12px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:"#fff",color:"#15803D",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,border:"2px solid #22C55E"}}>{inits(sh.name)}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:12.5,fontWeight:800,color:"#15803D",display:"flex",alignItems:"center",gap:5}}>
+                            <i className="ti ti-check" style={{fontSize:14}}/>Đã chốt: {sh.name}
+                          </div>
+                          <div style={{fontSize:10.5,color:"var(--mut)"}}>
+                            {isPrep?"Pha xong sẽ sẵn sàng giao":"Sẵn sàng — chờ shipper tới lấy"} · {tgReady?"✓ Telegram OK":(TG.isOn()?"⚠ Shipper chưa link chat":"⚠ Chưa bật Telegram")}
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        <button onClick={()=>pingShipper(o)} disabled={!tgReady}
+                          title={tgReady?"Gửi noti Telegram":(TG.isOn()?"Shipper chưa link Telegram chat_id":"Chưa cấu hình Telegram Bot")}
+                          style={{flex:2,minWidth:140,padding:"10px",background:tgReady?"linear-gradient(135deg,#3B82F6,#1E40AF)":"#E5E7EB",border:"none",borderRadius:6,cursor:tgReady?"pointer":"not-allowed",fontSize:12.5,fontWeight:800,color:tgReady?"#fff":"#9CA3AF",boxShadow:tgReady?"0 2px 8px rgba(59,130,246,.3)":"none",display:"flex",alignItems:"center",justifyContent:"center",gap:5}}>
+                          🔔 Gửi thông báo Telegram
                         </button>
-                      );
-                    });
-                  })()}
-                  {shippers.length===0&&<span style={{fontSize:10.5,color:"var(--err)",fontStyle:"italic"}}>Không có shipper trong ca — kiểm tra Lịch ca</span>}
+                        <button onClick={()=>{if(confirm(`Đổi shipper cho đơn ${o.id}? Sẽ bỏ ${sh.name} ra.`)){setSt(o.id,{sid:null},`Đã bỏ ${sh.name} khỏi đơn ${o.id}`,"info");}}}
+                          style={{flex:1,minWidth:90,padding:"10px",background:"#fff",border:"1.5px solid var(--bd)",borderRadius:6,cursor:"pointer",fontSize:11.5,fontWeight:700,color:"var(--text2)"}}>↻ Đổi shipper</button>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                {/* v1.9: combo gõ tên — fallback khi nhiều shipper */}
-                {shippers.length>0 && (
-                  <div style={{marginTop:7,maxWidth:240}}>
-                    <StaffCombo staffList={shippers} accent="var(--or)"
-                      placeholder="🔍 Hoặc gõ tên shipper..."
-                      onPick={sid=>assign(o.id, sid)}/>
-                  </div>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -2476,8 +2578,8 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
       <div className="card" style={{padding:14,marginBottom:14}}>
         <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:10,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <i className="ti ti-users" style={{color:"var(--or)"}}/>
-          <span>Trạng thái Shipper ca này</span>
-          <span style={{fontSize:10,color:"#999",fontWeight:400,marginLeft:"auto"}}>Click 1 shipper rồi phân vào đơn bên dưới</span>
+          <span>Trạng thái Shipper ca này ({shippers.length})</span>
+          <span style={{fontSize:10,color:"#999",fontWeight:400,marginLeft:"auto"}}>Tổng quan tải shipper trong ca hoạt động</span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:10}}>
           {shippers.map(s=>{
@@ -2514,25 +2616,11 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
               {col.items.map(o=>{
                 let actions = null;
                 if (col.key==="san_sang") {
+                  // v1.9.1: san_sang đã được điều phối ở HERO panel phía trên → chỉ hiển thị status
                   actions = (
-                    <>
-                      <div style={{fontSize:10,color:"#767676",marginBottom:5,fontWeight:600}}>{canAssign?"Phân công shipper:":"Cần Trưởng ca phân công"}</div>
-                      {canAssign && (
-                        <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                          {shippers.map(sh=>{
-                            const busy=orders.some(x=>x.sid===sh.id&&["da_lay","dang_giao"].includes(x.st));
-                            const isCur = o.sid===sh.id;
-                            return (
-                              <button key={sh.id} onClick={()=>assign(o.id,sh.id)}
-                                style={{fontSize:11,padding:"5px 9px",background:isCur?"var(--or)":(busy?"#fff5f5":"#fff"),border:`1px solid ${isCur?"var(--or)":(busy?"#fca5a5":"var(--bd)")}`,borderRadius:5,color:isCur?"#fff":(busy?"#dc2626":"#475569"),cursor:"pointer",fontWeight:600}}>
-                                {sh.name.split(" ").slice(-1)[0]}{busy?" 🔴":""}
-                              </button>
-                            );
-                          })}
-                          {shippers.length===0&&<span style={{fontSize:10,color:"#999"}}>Không có shipper</span>}
-                        </div>
-                      )}
-                    </>
+                    <div style={{fontSize:10.5,color:"var(--mut)",fontStyle:"italic",padding:"4px 0"}}>
+                      {o.sid ? `→ Phân cho ${staff.find(s=>s.id===o.sid)?.name||"shipper"}` : "↑ Phân ở panel Điều phối phía trên"}
+                    </div>
                   );
                 } else if (col.key==="dang_giao" || col.key==="da_lay") {
                   actions = (
@@ -4526,7 +4614,7 @@ function App(){
     kitchen:  {title:"Pha chế (KDS)",    sub:"Kitchen Display System · Realtime",
                comp:<KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>},
     shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển",
-               comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast}/>},
+               comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift}/>},
     staff:    {title:"Nhân sự & KPI",    sub:"Phân công · Theo dõi KPI · Bảng xếp hạng",
                comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
