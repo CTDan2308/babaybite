@@ -1,4 +1,4 @@
-# 🛒 CLB Quản Lý Bán Hàng v1.0
+# 🛒 BaBayBite
 
 > Hệ thống quản lý bán hàng nội bộ cho **Câu lạc bộ Sinh viên bán hàng Gây quỹ** — tạo đơn, pha chế, giao hàng, theo dõi KPI và báo cáo doanh thu trong từng ca.
 

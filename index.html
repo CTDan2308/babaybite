@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>CLB Quản Lý Bán Hàng v1.9.3</title>
+<title>BaBayBite v1.9.4</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -243,7 +243,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.9.3";
+const VERSION = "1.9.4";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -448,7 +448,7 @@ function LoginScreen({staff,onLogin}){
       <div className={shake?"shake":"fade-up"} style={{width:"100%",maxWidth:400,background:"rgba(255,255,255,.92)",backdropFilter:"blur(16px)",borderRadius:20,padding:"32px 26px",boxShadow:"0 16px 60px rgba(238,77,45,.22),0 4px 16px rgba(0,0,0,.06)",border:"1px solid rgba(255,255,255,.6)",position:"relative",zIndex:1}}>
         <div style={{textAlign:"center",marginBottom:22}}>
           <div style={{width:68,height:68,borderRadius:18,background:"var(--or-grad)",color:"#fff",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:32,marginBottom:14,boxShadow:"var(--sh-or)"}}>🛒</div>
-          <div style={{fontSize:19,fontWeight:800,color:"var(--or)",letterSpacing:.6}}>CLB BÁN HÀNG</div>
+          <div style={{fontSize:19,fontWeight:800,color:"var(--or)",letterSpacing:.6}}>BaBayBite</div>
           <div style={{fontSize:11.5,color:"var(--mut)",marginTop:3}}>v{VERSION} · Nhập tên đăng nhập + PIN</div>
         </div>
 
@@ -646,7 +646,7 @@ function HelpPopup(){
               {tab==="intro"&&(
                 <>
                   <div style={{background:"linear-gradient(135deg,#EE4D2D,#FF8557)",borderRadius:10,padding:18,color:"#fff",marginBottom:16}}>
-                    <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>CLB Quản Lý Bán Hàng</div>
+                    <div style={{fontSize:18,fontWeight:800,marginBottom:6}}>BaBayBite</div>
                     <div style={{fontSize:12,opacity:.92,lineHeight:1.55}}>Hệ thống nội bộ cho Câu lạc bộ Sinh viên — tạo đơn, pha chế, giao hàng, theo dõi KPI và báo cáo doanh thu trong từng ca.</div>
                   </div>
                   <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:8}}>✨ Tính năng chính</div>
@@ -764,7 +764,7 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
         <div style={{display:"flex",alignItems:"center",gap:9}}>
           <div style={{width:36,height:36,borderRadius:"var(--r-md)",background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800,boxShadow:"var(--sh-or)"}}>🛒</div>
           <div>
-            <div style={{fontSize:12.5,fontWeight:800,color:"var(--or)",letterSpacing:.4}}>CLB BÁN HÀNG</div>
+            <div style={{fontSize:12.5,fontWeight:800,color:"var(--or)",letterSpacing:.4}}>BaBayBite</div>
             <div style={{fontSize:9.5,color:"var(--mut2)"}}>v{VERSION}</div>
           </div>
         </div>
@@ -1677,7 +1677,7 @@ function CustomerOrderScreen({products,categories,zones,toast}){
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{fontSize:28}}>🛒</div>
           <div>
-            <div style={{fontSize:16,fontWeight:800,letterSpacing:.3}}>CLB BÁN HÀNG</div>
+            <div style={{fontSize:16,fontWeight:800,letterSpacing:.3}}>BaBayBite</div>
             <div style={{fontSize:11,opacity:.9}}>{tableId?`📍 Bàn ${tableId}`:"Đặt món trực tuyến"}</div>
           </div>
         </div>
@@ -2934,7 +2934,7 @@ function TelegramSettings({staff,setStaff,toast}){
   const testSend = async (s)=>{
     if (!s.telegram_chat_id) { toast("Chưa có chat_id cho "+s.name,"warn"); return; }
     setBusy(true);
-    const r = await TG.send(s.telegram_chat_id, `🔔 <b>Test từ CLB Bán Hàng</b>\nXin chào <b>${s.name}</b>!\nBạn sẽ nhận noti khi có đơn cần xử lý.`);
+    const r = await TG.send(s.telegram_chat_id, `🔔 <b>Test từ BaBayBite</b>\nXin chào <b>${s.name}</b>!\nBạn sẽ nhận noti khi có đơn cần xử lý.`);
     setBusy(false);
     if (r?.ok) toast(`✓ Đã gửi tới ${s.name}`,"success");
     else toast(`Lỗi gửi: ${r?.description||r?.error||"không rõ"}`,"error");
@@ -4051,7 +4051,7 @@ function GeneralSettings({zones,setZones,shift,setShift,staff,products,toast}){
         <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:10}}>ℹ️ Thông tin hệ thống</div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,fontSize:12}}>
           {[
-            ["Phiên bản","v3.1"],
+            ["Phiên bản","v"+VERSION],
             ["Thành viên active",staff.filter(s=>s.active).length+" / "+staff.length],
             ["Sản phẩm hiển thị",products.filter(p=>p.on!==false).length+" / "+products.length],
             ["Lưu trữ","Supabase Cloud"],
@@ -4621,6 +4621,12 @@ function App(){
   currentShiftRef.current = currentShift;
   shiftAssignmentsRef.current = shiftAssignments;
 
+  // v1.9.4 FIX: effectiveRole PHẢI khai báo trước object SCREENS. JSX bên trong SCREENS
+  // (vd <ShipperScreen effectiveRole={effectiveRole}/>) đọc biến này ngay khi object được
+  // tạo. Nếu để khai báo sau, Babel hoist const→var khiến prop nhận undefined →
+  // canAssign=false → ẩn toàn bộ panel "Phân công Shipper" của trưởng ca/admin.
+  const effectiveRole = effectiveRoleEarly;
+
   const SCREENS={
     dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
                comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder}/>},
@@ -4671,8 +4677,6 @@ function App(){
   if (!currentUser) {
     return <LoginScreen staff={staff} onLogin={handleLogin}/>;
   }
-
-  const effectiveRole = effectiveRoleEarly;
 
   // Đang nghỉ → màn rest
   if (effectiveRole === "off") {

@@ -1,8 +1,30 @@
 # Changelog
 
-Tất cả thay đổi đáng chú ý của dự án **CLB Quản Lý Bán Hàng** sẽ được ghi ở đây.
+Tất cả thay đổi đáng chú ý của dự án **BaBayBite** sẽ được ghi ở đây.
 
 Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân thủ [Semantic Versioning](https://semver.org/lang/vi/).
+
+---
+
+## [1.9.4] — 2026-06-02 15:28 (+07)
+
+🏷️ **Đổi tên app → BaBayBite** + 🐞 **Sửa lỗi ẩn panel phân công shipper**
+
+### Fixed — ShipperScreen (trưởng ca/admin)
+- **Lỗi hiển thị nặng:** toàn bộ panel "Phân công Shipper" bị ẩn với trưởng ca/admin.
+- Nguyên nhân: `const effectiveRole` khai báo *sau* object `SCREENS` nhưng JSX trong `SCREENS`
+  (`<ShipperScreen effectiveRole={effectiveRole}/>`) đọc biến này ngay khi tạo object. Babel
+  hoist `const`→`var` → prop nhận `undefined` → `canAssign=false` → panel không render.
+- Sửa: chuyển khai báo `effectiveRole` lên **trước** object `SCREENS`.
+- Đã verify trực tiếp: đăng nhập trưởng ca → màn Giao hàng hiện đầy đủ panel + bước chọn shipper.
+
+### Changed — Branding
+- Đổi tên toàn bộ app hiển thị từ "CLB Quản Lý Bán Hàng" / "CLB BÁN HÀNG" → **BaBayBite**
+  (title tab, logo sidebar, màn login, màn khách tự đặt, Help popup, tin nhắn test Telegram).
+- Cài đặt → Thông tin hệ thống: ô "Phiên bản" giờ hiển thị động theo `VERSION` (trước hard-code sai "v3.1").
+
+### Migration
+Không cần — pure UI/branding, không thay schema/DB.
 
 ---
 

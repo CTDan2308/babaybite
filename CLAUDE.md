@@ -4,7 +4,7 @@
 
 ## 🎯 Project
 
-**CLB Quản Lý Bán Hàng** — hệ thống quản lý bán hàng nội bộ cho CLB Sinh viên Bán hàng Gây quỹ.
+**BaBayBite** — hệ thống quản lý bán hàng nội bộ cho CLB Sinh viên Bán hàng Gây quỹ.
 
 - **Owner:** Lê Văn Trí — CEO, Learn to Leap (CTDan2308 trên GitHub)
 - **Stack:** Single-file React 18 (CDN) + Babel Standalone + Supabase (PostgreSQL + Realtime)
