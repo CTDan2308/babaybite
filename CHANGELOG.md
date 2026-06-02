@@ -6,6 +6,39 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.9.5] — 2026-06-02 18:15 (+07)
+
+📅 **Quản trị theo NGÀY** + ⏰ **Hẹn ngày giao + nhắc làm đơn trước giờ** + 🐞 fix UI/UX
+
+### ⚠️ CẦN CHẠY MIGRATION (bắt buộc cho "hẹn ngày")
+Vào **Supabase → SQL Editor**, chạy:
+```sql
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_date TEXT;
+```
+(Đã có sẵn trong `supabase-schema.sql`.) App tự phát hiện cột: **chưa chạy migration vẫn hoạt động bình thường**, chỉ tạm tắt phần "hẹn ngày" cho tới khi chạy + reload (không gây lỗi ghi đơn).
+
+### Added — Quản trị theo ngày
+- Component **DateNav** (◀ ngày ▶ + chọn lịch + "↻ Hôm nay") ở **Tổng quan**, **Báo cáo**, **Nhân sự & KPI**.
+- **Báo cáo theo ngày** (fix lỗi cũ cộng dồn toàn thời gian): doanh thu, tiền mặt/QR, top sản phẩm, log — lọc theo `created_at` của ngày đang chọn.
+- **KPI nhân sự theo ngày** (trước ghi "hôm nay" nhưng đếm cả lịch sử).
+- **Tổng quan theo ngày**: thẻ thống kê + biểu đồ giờ + đơn gần đây lọc theo ngày.
+- Xem lại bất kỳ ngày quá khứ; tên file CSV theo ngày (`BaoCao_YYYY-MM-DD.csv`).
+
+### Added — Hẹn ngày giao + nhắc nhở
+- Trực đơn: thêm ô **chọn NGÀY giao** cạnh giờ giao (mặc định hôm nay). Hiển thị thứ + ngày ở KDS, Shipper, ping Telegram.
+- **Nhắc làm đơn trước giờ giao** (mặc định 30 phút): KDS hiện badge "🔔 Làm trước HH:MM — còn N phút", tự tô vàng/đỏ (GẤP/TRỄ GIAO), kèm toast nhắc 1 lần/đơn. Đơn hẹn giờ không còn bị tính "trễ" oan theo thời điểm tạo.
+
+### Fixed (UI/UX)
+- **Giảm giá %**: kẹp 0–100, không còn ra tổng tiền âm khi gõ tay >100.
+- **Telegram noti**: hiển thị đúng số tiền (trước luôn `0đ` do dùng `r.tot` không tồn tại).
+- **CSV injection**: escape dấu `"` và prefix `'` cho ô bắt đầu bằng `= + - @`.
+- "Phiên bản" trong Cài đặt hiển thị động theo `VERSION`.
+
+### Migration
+Idempotent — chạy lại `supabase-schema.sql` an toàn. Tối thiểu chỉ cần dòng `ALTER TABLE` ở trên.
+
+---
+
 ## [1.9.4] — 2026-06-02 15:28 (+07)
 
 🏷️ **Đổi tên app → BaBayBite** + 🐞 **Sửa lỗi ẩn panel phân công shipper**

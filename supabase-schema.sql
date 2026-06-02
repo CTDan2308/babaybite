@@ -64,6 +64,9 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS return_reason TEXT;
 -- v1.9: hẹn giờ giao (HH:MM text — null = giao ngay)
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_at TEXT;
 
+-- v1.9.5: hẹn NGÀY giao (YYYY-MM-DD text — null = hôm nay). Dùng kèm schedule_at để nhắc làm đơn trước giờ giao.
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_date TEXT;
+
 CREATE TABLE IF NOT EXISTS zones (
   id         BIGINT PRIMARY KEY,
   lb         TEXT NOT NULL,

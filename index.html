@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.9.4</title>
+<title>BaBayBite v1.9.5</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -137,10 +137,14 @@ const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
 
 /* Mappers giữa shape JS (gọn) và shape DB (snake_case + reserved-safe) */
 const orderId = num => "ĐH" + String(num).padStart(3,"0");
+/* v1.9.5: cờ — DB đã có cột schedule_date chưa? Phát hiện lúc khởi động (App.useEffect).
+   Nếu CHƯA chạy migration: KHÔNG gửi schedule_date để tránh lỗi 400 vỡ mọi thao tác ghi đơn.
+   Tính năng "hẹn NGÀY" sẽ tự bật khi chạy ALTER TABLE trong supabase-schema.sql + reload. */
+let SCHED_DATE_OK = true;
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
 const productToDb   = p => ({id:p.id,name:p.name,cat:p.cat,price:p.price,stock:p.stock,on_menu:p.on!==false,emoji:p.emoji,recipe:p.recipe});
-const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||""});
-const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null});
+const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",createdAt:r.created_at||""});
+const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null, ...(SCHED_DATE_OK?{schedule_date:o.schD||null}:{})});
 const shiftFromDb   = r => ({name:r.name,start:r.start_at,end:r.end_at});
 const shiftToDb     = s => ({name:s.name,start_at:s.start,end_at:s.end});
 
@@ -243,7 +247,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.9.4";
+const VERSION = "1.9.5";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -278,6 +282,29 @@ const fmt   = n => (n||0).toLocaleString("vi-VN")+"đ";
 const inits = n => n.split(" ").map(w=>w[0]||"").slice(-2).join("");
 const nowS  = () => { const d=new Date(); return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`; };
 const todayS= () => { const d=new Date(); return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`; };
+
+/* v1.9.5: helpers QUẢN TRỊ THEO NGÀY (local timezone) */
+const toISO    = d => { const x=d instanceof Date?d:new Date(d); return `${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,"0")}-${String(x.getDate()).padStart(2,"0")}`; };
+const todayISO = () => toISO(new Date());
+const orderDay = o => { if(o.createdAt){ const d=new Date(o.createdAt); if(!isNaN(d)) return toISO(d); } return todayISO(); };
+const isoToVN  = s => { if(!s) return ""; const [y,m,d]=s.split("-"); return `${d}/${m}/${y}`; };
+const isoToVNShort = s => { if(!s) return ""; const [y,m,d]=s.split("-"); return `${d}/${m}`; };
+const addDaysISO = (s,n)=>{ const d=new Date(s+"T00:00:00"); d.setDate(d.getDate()+n); return toISO(d); };
+const WEEKDAY = ["Chủ nhật","Thứ 2","Thứ 3","Thứ 4","Thứ 5","Thứ 6","Thứ 7"];
+const isoWeekday = s => { if(!s) return ""; return WEEKDAY[new Date(s+"T00:00:00").getDay()]; };
+/* Nhãn hẹn giao: ngày (nếu khác hôm nay) + giờ */
+const schedLabel = o => { if(!o.schA && !o.schD) return ""; const day = (o.schD && o.schD!==todayISO()) ? isoToVNShort(o.schD)+" " : ""; return day + (o.schA||""); };
+/* Phút còn lại tới giờ giao (null nếu không hẹn giờ). nowD = Date hiện tại */
+const minsToDeadline = (o, nowD) => {
+  if(!o.schA) return null;
+  const [h,m]=(o.schA||"0:0").split(":").map(Number);
+  const day = o.schD || todayISO();
+  const dl = new Date(day+"T00:00:00"); dl.setHours(h||0, m||0, 0, 0);
+  return Math.round((dl - nowD)/60000);
+};
+const REMIND_LEAD = 30; // phút — nhắc làm đơn trước giờ giao
+/* Tổng tiền tính từ raw DB-row (snake_case) — dùng cho noti Telegram (trước đây dùng r.tot không tồn tại → luôn 0đ) */
+const dbTot = r => ((r.items||[]).reduce((s,i)=>s+(i.p||0)*(i.qty||0),0)) + (r.d_fee||0) - (r.disc||0);
 const iSub  = o => o.items.reduce((s,i)=>s+i.p*i.qty,0);
 const iTot  = o => iSub(o)+o.dFee-o.disc;
 const nxSt  = o => {
@@ -383,6 +410,32 @@ function Toast({list,dismiss}){
           <button onClick={()=>dismiss(t.id)} aria-label="Đóng" style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",cursor:"pointer",fontSize:14,lineHeight:1,padding:"4px 7px",borderRadius:4}}>✕</button>
         </div>
       ))}
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
+   DATE NAV (v1.9.5) — điều hướng NGÀY cho màn quản trị
+   Dùng ở Tổng quan / Báo cáo / Nhân sự & KPI để xem dữ liệu theo từng ngày.
+══════════════════════════════════════════════════════════ */
+function DateNav({date,setDate,countLabel}){
+  const isToday = date===todayISO();
+  const btn = {width:32,height:32,borderRadius:"var(--r-sm)",border:"1px solid var(--bd)",background:"#fff",cursor:"pointer",color:"var(--text2)",fontSize:16,fontWeight:700,lineHeight:1};
+  return (
+    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:12,background:"#fff",border:"1px solid var(--bd)",borderRadius:"var(--r-md)",padding:"8px 10px",boxShadow:"var(--sh-sm)"}}>
+      <button onClick={()=>setDate(addDaysISO(date,-1))} title="Ngày trước" style={btn}>‹</button>
+      <div style={{display:"flex",alignItems:"center",gap:7,flex:1,minWidth:160}}>
+        <i className="ti ti-calendar-event" style={{fontSize:17,color:"var(--or)"}}/>
+        <div>
+          <div style={{fontSize:13,fontWeight:800,color:"var(--text)"}}>{isoWeekday(date)}, {isoToVN(date)}{isToday&&<span style={{fontSize:9.5,marginLeft:6,padding:"1px 7px",background:"var(--orl)",color:"var(--or)",borderRadius:"var(--r-pill)",fontWeight:800}}>HÔM NAY</span>}</div>
+          {countLabel&&<div style={{fontSize:10.5,color:"var(--mut)"}}>{countLabel}</div>}
+        </div>
+      </div>
+      <input type="date" value={date} max={todayISO()} onChange={e=>e.target.value&&setDate(e.target.value)}
+        style={{padding:"6px 9px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",fontSize:12,background:"#fff",color:"var(--text)"}}/>
+      <button onClick={()=>setDate(addDaysISO(date,1))} disabled={isToday} title="Ngày sau"
+        style={{...btn,background:isToday?"#FAFAFA":"#fff",cursor:isToday?"not-allowed":"pointer",color:isToday?"#cbd5e1":"var(--text2)"}}>›</button>
+      {!isToday&&<button onClick={()=>setDate(todayISO())} className="btn-pri" style={{padding:"7px 12px",borderRadius:"var(--r-sm)",fontSize:11.5,fontWeight:700}}>↻ Hôm nay</button>}
     </div>
   );
 }
@@ -881,8 +934,10 @@ function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effective
 /* ══════════════════════════════════════════════════════════
    DASHBOARD
 ══════════════════════════════════════════════════════════ */
-function Dashboard({orders,staff,currentUser,deleteOrder}){
+function Dashboard({orders:allOrders,staff,currentUser,deleteOrder,viewDate,setViewDate}){
   const isAdmin = currentUser?.role === "admin";
+  // v1.9.5: lọc theo ngày đang xem (quản trị theo ngày)
+  const orders = allOrders.filter(o=>orderDay(o)===viewDate);
   const done  = orders.filter(o=>o.st==="hoan_thanh");
   const rev   = done.reduce((s,o)=>s+iTot(o),0);
   const ship  = orders.filter(o=>o.type==="ship"&&o.st==="hoan_thanh");
@@ -903,6 +958,7 @@ function Dashboard({orders,staff,currentUser,deleteOrder}){
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:18,background:"var(--bg)"}}>
+      <DateNav date={viewDate} setDate={setViewDate} countLabel={`${orders.length} đơn · ${done.length} hoàn thành · DT ${fmt(rev)}`}/>
       <div className="grid-stats-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
         {cards.map(s=>(
           <div key={s.l} className="card card-hover" style={{padding:"16px 16px 14px",position:"relative",overflow:"hidden"}}>
@@ -1116,7 +1172,7 @@ function KpiPicker({staff,value,onChange,inShiftIds,inp}){
 
 function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zones,categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
   const isAdmin = currentUser?.role === "admin";
-  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:""};
+  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:""};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
   const [cart,setCart] = useState({...EC});
@@ -1129,7 +1185,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
 
   const sub     = cart.items.reduce((s,i)=>s+i.p*i.qty,0);
   const dFee    = cart.type==="ship"?(zones[cart.zone]||{fee:8000}).fee:0;
-  const discAmt = cart.dT==="pct"?Math.round(sub*cart.disc/100):Math.min(cart.disc||0,sub);
+  const discAmt = cart.dT==="pct"?Math.round(sub*Math.min(Math.max(cart.disc||0,0),100)/100):Math.min(Math.max(cart.disc||0,0),sub);
   const total   = sub+dFee-discAmt;
 
   const visible = products.filter(p=>p.on!==false);
@@ -1151,7 +1207,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
     if(!cart.items.length){toast("Giỏ hàng đang trống","warn");return;}
     const num = (orders.length ? Math.max(...orders.map(o=>o.num||0)) : 0) + 1;
     const id  = `ĐH${String(num).padStart(3,"0")}`;
-    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:"moi",pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||""};
+    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:"moi",pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||"",schD:cart.schA?(cart.schD||todayISO()):""};
     setProducts(ps=>ps.map(p=>{const ci=cart.items.find(i=>i.pid===p.id);return ci?{...p,stock:Math.max(0,p.stock-ci.qty)}:p;}));
     setOrders(os=>[...os,o]);
     setCart({...EC,kpi:currentUser.id});
@@ -1261,18 +1317,23 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
                   </button>
                 ))}
               </div>
-              {/* v1.9: hẹn giờ giao */}
+              {/* v1.9.5: hẹn ngày + giờ giao */}
               <div style={{marginTop:10,paddingTop:8,borderTop:"1px dashed var(--bd2)"}}>
-                <div style={lbl}><i className="ti ti-clock-hour-4" style={{fontSize:11,marginRight:3}}/>Hẹn giờ giao (tùy chọn)</div>
+                <div style={lbl}><i className="ti ti-clock-hour-4" style={{fontSize:11,marginRight:3}}/>Hẹn giao (tùy chọn)</div>
                 <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                  <input type="date" value={cart.schD} min={todayISO()} onChange={e=>setCart(c=>({...c,schD:e.target.value}))}
+                    style={{...inp,padding:"7px 10px",flex:1.3}} title="Ngày giao"/>
                   <input type="time" value={cart.schA} onChange={e=>setCart(c=>({...c,schA:e.target.value}))}
-                    style={{...inp,padding:"7px 10px",flex:1}}/>
-                  {cart.schA && (
-                    <button onClick={()=>setCart(c=>({...c,schA:""}))} title="Xoá hẹn giờ"
+                    style={{...inp,padding:"7px 10px",flex:1}} title="Giờ giao"/>
+                  {(cart.schA||cart.schD) && (
+                    <button onClick={()=>setCart(c=>({...c,schA:"",schD:""}))} title="Xoá hẹn giao"
                       style={{padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",background:"#fff",cursor:"pointer",fontSize:11,color:"var(--mut)"}}>✕</button>
                   )}
                 </div>
-                {cart.schA && <div style={{fontSize:10.5,color:"var(--or)",marginTop:4,fontWeight:600}}>⏰ Đơn sẽ được đánh dấu hẹn giao lúc <b>{cart.schA}</b></div>}
+                {cart.schA
+                  ? <div style={{fontSize:10.5,color:"var(--or)",marginTop:4,fontWeight:600}}>⏰ Hẹn giao <b>{cart.schA}</b> · {cart.schD?`${isoWeekday(cart.schD)} ${isoToVN(cart.schD)}`:"hôm nay"} · 🔔 nhắc làm trước {REMIND_LEAD} phút</div>
+                  : (cart.schD && <div style={{fontSize:10.5,color:"var(--warn)",marginTop:4,fontWeight:600}}>⚠ Đã chọn ngày nhưng chưa chọn <b>giờ giao</b> — cần giờ để bật nhắc nhở</div>)
+                }
               </div>
             </div>
           )}
@@ -1499,7 +1560,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
                   {o.ph&&<span style={{color:"var(--mut)"}}> · {o.ph}</span>}
                   {o.adr&&<div style={{fontSize:11,color:"var(--mut)",marginTop:2}}><i className="ti ti-map-pin" style={{fontSize:11,marginRight:2}}/>{o.adr}</div>}
                 </div>
-                {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}>⏰ Hẹn giao: {o.schA}</div>}
+                {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}>⏰ Hẹn giao: {schedLabel(o)}</div>}
                 <div style={{fontSize:11,color:"var(--mut)",marginBottom:o.note?6:8,lineHeight:1.55,background:"#FAFAFA",padding:"6px 9px",borderRadius:"var(--r-sm)"}}>{o.items.map(i=>`${i.name}×${i.qty}${i.note?` (${i.note})`:""}`).join(" · ")}</div>
                 {o.note&&<div style={{fontSize:11,color:"var(--or)",marginBottom:8,background:"var(--orl)",padding:"5px 9px",borderRadius:"var(--r-sm)",fontWeight:500}}><i className="ti ti-note" style={{fontSize:11,marginRight:3}}/>{o.note}</div>}
                 <div style={{fontSize:10.5,color:"var(--mut2)",marginBottom:9,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -1832,6 +1893,22 @@ function KitchenScreen({orders,setOrders,products,setProducts,staff=[],toast}){
   const NOW = now.getHours()*60 + now.getMinutes();
   const elapsed = t => {const[h,m]=(t||"00:00").split(":").map(Number);const d=NOW-(h*60+m);return d>=0?d:0;};
 
+  // v1.9.5: nhắc làm đơn HẸN GIỜ trước REMIND_LEAD phút — toast 1 lần / đơn (reset nếu đổi lịch ra xa)
+  const remindedRef = useRef(new Set());
+  useEffect(()=>{
+    orders.forEach(o=>{
+      if(o.st!=="moi" && o.st!=="pha_che") return;
+      const dl = minsToDeadline(o, now);
+      if(dl===null) return;
+      if(dl<=REMIND_LEAD && dl>-180 && !remindedRef.current.has(o.id)){
+        remindedRef.current.add(o.id);
+        toast(`🔔 Cần làm đơn ${o.id} ${dl>=0?`trong ${dl} phút`:`— ĐÃ TRỄ ${-dl} phút`} (hẹn giao ${schedLabel(o)})`, dl<0?"error":"warn");
+      } else if(dl>REMIND_LEAD && remindedRef.current.has(o.id)){
+        remindedRef.current.delete(o.id);
+      }
+    });
+  },[orders, now, toast]);
+
   const advance=o=>{
     const ns=nxSt(o); if(!ns) return;
     setOrders(os=>os.map(x=>x.id===o.id?{...x,st:ns}:x));
@@ -1877,18 +1954,21 @@ function KitchenScreen({orders,setOrders,products,setProducts,staff=[],toast}){
               </div>
               <div style={{padding:10,display:"flex",flexDirection:"column",gap:10}}>
                 {colOrders.map(o=>{
+                  const dl = minsToDeadline(o, now);   // phút tới giờ giao (null nếu không hẹn)
+                  const sched = dl!==null;
+                  const overdue = sched && dl<0;
                   const mins=elapsed(o.t);
-                  const urgent=mins>15;
-                  const warn=mins>10&&mins<=15;
+                  const urgent = sched ? (o.st!=="san_sang" && dl<=REMIND_LEAD) : mins>15;
+                  const warn   = sched ? (!urgent && dl<=REMIND_LEAD+20) : (mins>10&&mins<=15);
                   return (
                     <div key={o.id} className={urgent?"shake":""} style={{background:"#fff",border:`2px solid ${urgent?"#FCA5A5":warn?"#FCD34D":"var(--bd)"}`,borderRadius:"var(--r-md)",padding:13,transition:"border .2s",boxShadow:urgent?"0 4px 16px rgba(220,38,38,.15)":"var(--sh-sm)"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:7}}>
                         <span style={{fontFamily:"ui-monospace,monospace",fontWeight:800,color:"var(--or)",fontSize:15}}>{o.id}</span>
                         <div style={{display:"flex",alignItems:"center",gap:5}}>
-                          {urgent&&<span style={{fontSize:9.5,color:"#fff",fontWeight:800,background:"var(--err)",padding:"3px 7px",borderRadius:"var(--r-pill)",letterSpacing:.3}}>TRỄ</span>}
-                          {warn&&<span style={{fontSize:9.5,color:"#fff",fontWeight:800,background:"var(--warn)",padding:"3px 7px",borderRadius:"var(--r-pill)",letterSpacing:.3}}>SẮP TRỄ</span>}
-                          <span style={{fontSize:11,padding:"3px 8px",borderRadius:"var(--r-pill)",background:urgent?"var(--err-bg)":warn?"var(--warn-bg)":"#F3F4F6",color:urgent?"var(--err)":warn?"var(--warn)":"var(--mut)",fontWeight:700,display:"inline-flex",alignItems:"center",gap:2}}>
-                            <i className="ti ti-clock" style={{fontSize:11}}/>{mins}p
+                          {urgent&&<span style={{fontSize:9.5,color:"#fff",fontWeight:800,background:"var(--err)",padding:"3px 7px",borderRadius:"var(--r-pill)",letterSpacing:.3}}>{sched?(overdue?"TRỄ GIAO":"GẤP"):"TRỄ"}</span>}
+                          {warn&&<span style={{fontSize:9.5,color:"#fff",fontWeight:800,background:"var(--warn)",padding:"3px 7px",borderRadius:"var(--r-pill)",letterSpacing:.3}}>{sched?"SẮP TỚI":"SẮP TRỄ"}</span>}
+                          <span title={sched?`Hẹn giao ${schedLabel(o)}`:`${mins} phút trong bếp`} style={{fontSize:11,padding:"3px 8px",borderRadius:"var(--r-pill)",background:urgent?"var(--err-bg)":warn?"var(--warn-bg)":"#F3F4F6",color:urgent?"var(--err)":warn?"var(--warn)":"var(--mut)",fontWeight:700,display:"inline-flex",alignItems:"center",gap:2}}>
+                            <i className={sched?"ti ti-alarm":"ti ti-clock"} style={{fontSize:11}}/>{sched ? (dl>=0?`${dl}p`:`-${-dl}p`) : `${mins}p`}
                           </span>
                         </div>
                       </div>
@@ -1896,6 +1976,15 @@ function KitchenScreen({orders,setOrders,products,setProducts,staff=[],toast}){
                         <span style={{fontSize:12.5,color:"var(--text)",fontWeight:700}}>{o.cus}</span>
                         <TPill type={o.type}/>
                       </div>
+                      {sched && o.st!=="san_sang" && (
+                        <div style={{marginBottom:10,padding:"7px 10px",borderRadius:"var(--r-sm)",fontSize:11,fontWeight:700,display:"flex",alignItems:"center",gap:6,
+                          background:overdue?"var(--err-bg)":urgent?"#FEF3C7":"#EFF6FF",
+                          color:overdue?"var(--err)":urgent?"#92400E":"#1E40AF",
+                          border:`1px solid ${overdue?"#FCA5A5":urgent?"#FCD34D":"#93C5FD"}`}}>
+                          <i className="ti ti-bell-ringing" style={{fontSize:14}}/>
+                          <span>🔔 Làm trước <b>{o.schA}</b>{o.schD&&o.schD!==todayISO()?` · ${isoWeekday(o.schD)} ${isoToVNShort(o.schD)}`:""} — {dl>=0?`còn ${dl} phút`:`đã trễ ${-dl} phút`}</span>
+                        </div>
+                      )}
                       {o.items.map((item,ii)=>{
                         const prod=products.find(p=>p.id===item.pid);
                         return (
@@ -2007,7 +2096,7 @@ function ShipperOrderCard({o,staff,actions,showShipper=true}){
         <div style={{fontSize:12.5,color:"var(--text)",fontWeight:700,marginBottom:3}}>{o.cus}</div>
         {o.ph&&<div style={{fontSize:11,color:"var(--mut)",marginBottom:3,display:"flex",alignItems:"center",gap:4}}><i className="ti ti-phone" style={{fontSize:12}}/><a href={`tel:${o.ph}`} style={{color:"var(--info)",textDecoration:"none",fontWeight:600}}>{o.ph}</a></div>}
         <div style={{fontSize:11,color:"var(--mut)",marginBottom:6,lineHeight:1.45,display:"flex",alignItems:"flex-start",gap:4}}><i className="ti ti-map-pin" style={{fontSize:12,marginTop:1,color:"var(--or)"}}/>{o.adr}</div>
-        {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4,border:"1px solid #93C5FD"}}>⏰ Hẹn giao: {o.schA}</div>}
+        {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4,border:"1px solid #93C5FD"}}>⏰ Hẹn giao: {schedLabel(o)}</div>}
         <div style={{fontSize:11,color:"var(--text2)",marginBottom:7,lineHeight:1.45,background:"#FAFAFA",padding:"5px 9px",borderRadius:"var(--r-sm)"}}>{o.items.map(i=>`${i.name}×${i.qty}`).join(", ")}</div>
         {o.returnReason&&<div style={{fontSize:11,color:"#9D174D",background:"#FCE7F3",borderRadius:"var(--r-sm)",padding:"5px 9px",marginBottom:7,fontWeight:500}}>↩️ {o.returnReason}</div>}
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:actions?9:0,paddingTop:5,borderTop:"1px dashed var(--bd2)"}}>
@@ -2202,7 +2291,7 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
                     <i className="ti ti-clock-hour-4" style={{fontSize:20,color:"#1E40AF",flexShrink:0}}/>
                     <div style={{flex:1}}>
                       <div style={{fontSize:11,color:"#1E40AF",fontWeight:700,opacity:.85}}>HẸN GIAO LÚC</div>
-                      <div style={{fontSize:17,fontWeight:800,color:"#1E40AF"}}>{current.schA}</div>
+                      <div style={{fontSize:17,fontWeight:800,color:"#1E40AF"}}>{current.schA}{current.schD && current.schD!==todayISO() ? ` · ${isoWeekday(current.schD)} ${isoToVN(current.schD)}` : ""}</div>
                     </div>
                   </div>
                 )}
@@ -2382,7 +2471,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
     if (!sh) { toast("Không tìm thấy shipper","error"); return; }
     if (!TG.isOn()) { toast("Chưa cấu hình Telegram Bot (Cài đặt → Telegram Bot)","warn"); return; }
     if (!sh.telegram_chat_id) { toast(`${sh.name} chưa link chat Telegram`,"warn"); return; }
-    const msg = `🔔 <b>Nhắc nhở từ Trưởng ca</b>\nĐơn <b>${o.id}</b> · ${o.cus}${o.ph?` · ${o.ph}`:""}\n📍 ${o.adr||"(tại chỗ)"}${o.schA?`\n⏰ <b>Hẹn giao: ${o.schA}</b>`:""}\n💰 Phí ship: ${fmt(o.dFee||0)}\n💬 Vui lòng xử lý ngay!`;
+    const msg = `🔔 <b>Nhắc nhở từ Trưởng ca</b>\nĐơn <b>${o.id}</b> · ${o.cus}${o.ph?` · ${o.ph}`:""}\n📍 ${o.adr||"(tại chỗ)"}${o.schA?`\n⏰ <b>Hẹn giao: ${schedLabel(o)}</b>`:""}\n💰 Phí ship: ${fmt(o.dFee||0)}\n💬 Vui lòng xử lý ngay!`;
     const r = await TG.send(sh.telegram_chat_id, msg);
     if (r && r.ok) toast(`✓ Đã ping ${sh.name} qua Telegram`,"success");
     else toast(`Gửi ping thất bại${r?.description?`: ${r.description}`:""}`,"error");
@@ -2490,7 +2579,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
                     <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:180}}>
                       <i className="ti ti-map-pin" style={{fontSize:13,color:"var(--or)"}}/>{o.adr||"—"}
                     </div>
-                    {o.schA && <span style={{fontSize:11,padding:"3px 8px",background:"#EFF6FF",color:"#1E40AF",border:"1px solid #93C5FD",borderRadius:"var(--r-pill)",fontWeight:700}}>⏰ {o.schA}</span>}
+                    {o.schA && <span style={{fontSize:11,padding:"3px 8px",background:"#EFF6FF",color:"#1E40AF",border:"1px solid #93C5FD",borderRadius:"var(--r-pill)",fontWeight:700}}>⏰ {schedLabel(o)}</span>}
                   </div>
 
                   {/* STATE A: chưa có sid, chưa chọn — show shipper chips + combo */}
@@ -2705,18 +2794,21 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
 /* ══════════════════════════════════════════════════════════
    STAFF SCREEN
 ══════════════════════════════════════════════════════════ */
-function StaffScreen({orders,staff,currentShift,shiftAssignments=[]}){
+function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,setViewDate}){
+  // v1.9.5: KPI đếm theo NGÀY đang xem (trước đây cộng dồn toàn thời gian dù ghi "hôm nay")
+  const dayOrders = orders.filter(o=>orderDay(o)===viewDate);
   const kpi=sid=>{
-    const mine=orders.filter(o=>o.kpi===sid&&o.st==="hoan_thanh");
+    const mine=dayOrders.filter(o=>o.kpi===sid&&o.st==="hoan_thanh");
     return {cnt:mine.length,rev:mine.reduce((s,o)=>s+iTot(o),0)};
   };
   // v1.7: role thực tế trong ca hiện tại
   const shiftRole = s => roleInShift(s.id, s.role, currentShift?.id, shiftAssignments);
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
+      <DateNav date={viewDate} setDate={setViewDate} countLabel={`KPI tính theo đơn HOÀN THÀNH trong ngày · ${dayOrders.filter(o=>o.st==="hoan_thanh").length} đơn xong`}/>
       <div style={{fontSize:11,color:"var(--mut)",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
         <i className="ti ti-info-circle" style={{fontSize:13,color:"var(--or)"}}/>
-        {currentShift ? <>Đếm theo <b>{currentShift.name}</b> ({currentShift.start_at}–{currentShift.end_at}) — chỉ nhân sự được phân ca</> : <>Ngoài giờ làm việc — không có ca hiện hành</>}
+        {currentShift ? <>Vai trò đếm theo <b>{currentShift.name}</b> ({currentShift.start_at}–{currentShift.end_at}) · KPI đếm theo ngày <b>{isoToVN(viewDate)}</b></> : <>Ngoài giờ làm việc · KPI đếm theo ngày <b>{isoToVN(viewDate)}</b></>}
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:14}}>
         {["truong_ca","truc_don","pha_che","shipper","admin"].map(role=>{
@@ -2732,7 +2824,7 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[]}){
       </div>
 
       <div className="card" style={{padding:16,marginBottom:14}}>
-        <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:10}}>Nhân sự · KPI hôm nay</div>
+        <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:10}}>Nhân sự · KPI ngày {isoToVN(viewDate)}</div>
         <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
           <thead>
@@ -2811,7 +2903,9 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[]}){
 /* ══════════════════════════════════════════════════════════
    REPORT SCREEN
 ══════════════════════════════════════════════════════════ */
-function ReportScreen({orders,staff,products,shift,toast}){
+function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setViewDate}){
+  // v1.9.5: BÁO CÁO THEO NGÀY — trước đây cộng dồn toàn thời gian dù ghi "cuối ca/hôm nay"
+  const orders  = allOrders.filter(o=>orderDay(o)===viewDate);
   const done    = orders.filter(o=>o.st==="hoan_thanh");
   const rev     = done.reduce((s,o)=>s+iTot(o),0);
   const cashRev = done.filter(o=>o.pay==="cash").reduce((s,o)=>s+iTot(o),0);
@@ -2833,8 +2927,10 @@ function ReportScreen({orders,staff,products,shift,toast}){
       staff.find(s=>s.id===o.by)?.name||"—",
       staff.find(s=>s.id===o.kpi)?.name||"—",
     ]));
-    const csv="﻿"+rows.map(r=>r.map(c=>`"${c}"`).join(",")).join("\n");
-    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),download:`BaoCao_${todayS().replace(/\//g,"-")}.csv`});
+    // v1.9.5 (fix CSV injection + escape): bọc "" cho dấu ngoặc kép, prefix ' nếu ô bắt đầu bằng = + - @ (chống chạy công thức Excel)
+    const esc=c=>{ let s=String(c==null?"":c); if(/^[=+\-@]/.test(s)) s="'"+s; return '"'+s.replace(/"/g,'""')+'"'; };
+    const csv="﻿"+rows.map(r=>r.map(esc).join(",")).join("\n");
+    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),download:`BaoCao_${viewDate}.csv`});
     a.click(); URL.revokeObjectURL(a.href);
     toast("✅ Xuất báo cáo CSV thành công","success");
   };
@@ -2849,11 +2945,12 @@ function ReportScreen({orders,staff,products,shift,toast}){
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
+      <DateNav date={viewDate} setDate={setViewDate} countLabel={`${orders.length} đơn trong ngày · ${done.length} hoàn thành · DT ${fmt(rev)}`}/>
       <div className="card" style={{padding:16,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
           <div>
-            <div style={{fontSize:14,fontWeight:800,color:"#212121"}}>Báo cáo {shift.name} — {todayS()}</div>
-            <div style={{fontSize:11,color:"#767676"}}>{shift.start} – Hiện tại · Trưởng ca: {staff.find(s=>s.role==="truong_ca"&&s.active)?.name||"—"}</div>
+            <div style={{fontSize:14,fontWeight:800,color:"#212121"}}>Báo cáo ngày {isoToVN(viewDate)} {viewDate===todayISO()?`· ${shift.name}`:""}</div>
+            <div style={{fontSize:11,color:"#767676"}}>{isoWeekday(viewDate)} · Trưởng ca: {staff.find(s=>s.role==="truong_ca"&&s.active)?.name||"—"}</div>
           </div>
           <button onClick={exportCSV} className="btn-pri" style={{display:"flex",alignItems:"center",gap:6,padding:"9px 18px",borderRadius:8,fontSize:12}}>
             <i className="ti ti-download"/>Xuất CSV
@@ -4132,6 +4229,7 @@ function App(){
   const [loading,setLoading] = useState(true);
   const [connStatus,setConnStatus] = useState("connecting");
   const [sbOpen,setSbOpen]   = useState(false);
+  const [viewDate,setViewDate] = useState(()=>todayISO()); // v1.9.5: ngày đang xem ở màn quản trị
 
   // Refs để diff-wrapper có prev mới nhất (đồng bộ với state)
   const ordersRef     = useRef([]);
@@ -4292,6 +4390,14 @@ function App(){
           console.error(pR.error,sR.error,oR.error,zR.error,cR.error,shsR.error,saR.error);
           setLoading(false); return;
         }
+        // v1.9.5: phát hiện cột schedule_date (chưa migrate → KHÔNG gửi cột này, tránh lỗi 400)
+        if (oR.data && oR.data.length) {
+          SCHED_DATE_OK = Object.prototype.hasOwnProperty.call(oR.data[0], "schedule_date");
+        } else {
+          const probe = await sb.from("orders").select("schedule_date").limit(1);
+          SCHED_DATE_OK = !probe.error;
+        }
+        if (!SCHED_DATE_OK) console.warn("[BaBayBite] Cột 'schedule_date' chưa có trong DB — tính năng 'hẹn ngày giao' tạm tắt. Chạy ALTER TABLE trong supabase-schema.sql rồi reload để bật.");
         const ps = (pR.data||[]).map(productFromDb);
         const ss = sR.data||[];
         const os = (oR.data||[]).map(orderFromDb);
@@ -4462,7 +4568,7 @@ function App(){
             if (r.st === "cho_xac_nhan") {
               // Báo các trực đơn + trưởng ca có chat_id
               tgBroadcast(["truc_don","truong_ca","admin"],
-                `🔔 <b>Đơn KHÁCH chờ duyệt</b>\n${orderId(r.num)} · ${r.cus||""}${r.ph?` · ${r.ph}`:""}\n${summary}\n💰 ${fmt(r.tot||0)}`);
+                `🔔 <b>Đơn KHÁCH chờ duyệt</b>\n${orderId(r.num)} · ${r.cus||""}${r.ph?` · ${r.ph}`:""}\n${summary}\n💰 ${fmt(dbTot(r))}`);
             } else {
               tgBroadcast(["pha_che","truong_ca","admin"],
                 `🆕 <b>Đơn mới ${orderId(r.num)}</b>\n${r.cus||""} — ${itemCount} món\n${summary}`);
@@ -4481,7 +4587,7 @@ function App(){
             // v1.8: Telegram — leader gửi cho tất cả shipper + trưởng ca
             if (TG.isOn() && TG.isLeader(currentUserRef.current?.id, onlineUsersRef.current||[])) {
               tgBroadcast(["shipper","truong_ca","admin"],
-                `📦 <b>Đơn cần shipper ${orderId(r.num)}</b>\n${r.cus||""} — ${r.adr||""}\n💰 ${fmt(r.tot||0)} · phí ship ${fmt(r.d_fee||r.dFee||0)}\n👉 Mở app để nhận`);
+                `📦 <b>Đơn cần shipper ${orderId(r.num)}</b>\n${r.cus||""} — ${r.adr||""}\n💰 ${fmt(dbTot(r))} · phí ship ${fmt(r.d_fee||r.dFee||0)}\n👉 Mở app để nhận`);
             }
           }
           // Shipper bị gán đơn (sid thay đổi sang chính họ) → báo riêng cho shipper đó
@@ -4494,7 +4600,7 @@ function App(){
             const sh = (staffRef.current||[]).find(s=>s.id===r.sid);
             if (sh?.telegram_chat_id) {
               TG.send(sh.telegram_chat_id,
-                `🛵 <b>Bạn vừa được giao đơn ${orderId(r.num)}</b>\n${r.cus||""}\n📍 ${r.adr||"(tại chỗ)"}\n💰 ${fmt(r.tot||0)}`);
+                `🛵 <b>Bạn vừa được giao đơn ${orderId(r.num)}</b>\n${r.cus||""}\n📍 ${r.adr||"(tại chỗ)"}\n💰 ${fmt(dbTot(r))}`);
             }
           }
         }
@@ -4629,7 +4735,7 @@ function App(){
 
   const SCREENS={
     dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
-               comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder}/>},
+               comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder} viewDate={viewDate} setViewDate={setViewDate}/>},
     order:    {title:"Trực đơn",         sub:"Nhận & tạo đơn hàng · Tách KPI người sale",
                comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} zones={zones} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
     kitchen:  {title:"Pha chế (KDS)",    sub:"Kitchen Display System · Realtime",
@@ -4637,9 +4743,9 @@ function App(){
     shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển",
                comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift}/>},
     staff:    {title:"Nhân sự & KPI",    sub:"Phân công · Theo dõi KPI · Bảng xếp hạng",
-               comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments}/>},
+               comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments} viewDate={viewDate} setViewDate={setViewDate}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
-               comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast}/>},
+               comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate}/>},
     settings: {title:"Cài đặt",          sub:"Quản lý nhân sự, sản phẩm, danh mục, lịch ca",
                comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast}/>},
   };
