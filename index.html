@@ -3,7 +3,10 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>CLB Quản Lý Bán Hàng v1.9.2</title>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<meta http-equiv="Pragma" content="no-cache"/>
+<meta http-equiv="Expires" content="0"/>
+<title>CLB Quản Lý Bán Hàng v1.9.3</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -240,7 +243,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.9.2";
+const VERSION = "1.9.3";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -2426,16 +2429,18 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
 
-      {/* v1.9.2: ĐIỀU PHỐI SHIPPER — LUÔN render (đẩy lên đầu) — 3-step flow: Chọn → Chốt → Ping */}
+      {/* v1.9.3: PHÂN CÔNG SHIPPER — LUÔN render, đầu trang — flow Chọn → Chốt → Ping */}
       {canAssign && (
         <div style={{background:"linear-gradient(135deg,#FFF4F0 0%,#FFEDE5 100%)",border:"2px solid var(--or)",borderRadius:12,padding:14,marginBottom:14,boxShadow:"0 4px 16px rgba(238,77,45,.12)"}}>
           <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:12,flexWrap:"wrap"}}>
-            <div style={{width:36,height:36,borderRadius:"50%",background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"var(--sh-or)"}}>🎯</div>
+            <div style={{width:38,height:38,borderRadius:10,background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:19,boxShadow:"var(--sh-or)"}}>🛵</div>
             <div style={{flex:1,minWidth:180}}>
-              <div style={{fontSize:14,fontWeight:800,color:"var(--or)"}}>Điều phối shipper · {needCoord.length} đơn</div>
-              <div style={{fontSize:10.5,color:"var(--text2)"}}>1️⃣ Chọn shipper · 2️⃣ Xác nhận chốt · 3️⃣ Gửi thông báo Telegram</div>
+              <div style={{fontSize:15,fontWeight:800,color:"var(--or)",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                Phân công Shipper
+                <span style={{fontSize:9.5,fontWeight:800,background:"var(--or)",color:"#fff",padding:"2px 7px",borderRadius:"var(--r-pill)",letterSpacing:.3}}>v{VERSION}</span>
+              </div>
+              <div style={{fontSize:10.5,color:"var(--text2)",marginTop:1}}>1️⃣ Chọn shipper · 2️⃣ Xác nhận chốt · 3️⃣ Gửi thông báo Telegram</div>
             </div>
-            {/* Pool shipper trong ca */}
             <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"var(--text2)",background:"#fff",padding:"6px 11px",borderRadius:"var(--r-pill)",border:"1px solid var(--bd)"}}>
               <i className="ti ti-users" style={{fontSize:13,color:"var(--or)"}}/>
               <span>Shipper trong ca: <b style={{color:"var(--or)"}}>{shippers.length}</b></span>
