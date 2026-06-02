@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-<title>CLB Quản Lý Bán Hàng v1.9.1</title>
+<title>CLB Quản Lý Bán Hàng v1.9.2</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -240,7 +240,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.9.1";
+const VERSION = "1.9.2";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -2425,20 +2425,9 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
-      <div className="grid-stats-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
-        {stats.map(s=>(
-          <div key={s.l} className="card" style={{padding:"13px 14px"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
-              <div style={{fontSize:11,color:"#767676"}}>{s.l}</div>
-              <div style={{width:32,height:32,borderRadius:7,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><i className={`ti ${s.ic}`} style={{fontSize:15,color:s.tc}}/></div>
-            </div>
-            <div style={{fontSize:22,fontWeight:800,color:"#212121"}}>{s.v}</div>
-          </div>
-        ))}
-      </div>
 
-      {/* v1.9.1: ĐIỀU PHỐI SHIPPER — 3-step flow: Chọn → Chốt → Ping */}
-      {canAssign && needCoord.length>0 && (
+      {/* v1.9.2: ĐIỀU PHỐI SHIPPER — LUÔN render (đẩy lên đầu) — 3-step flow: Chọn → Chốt → Ping */}
+      {canAssign && (
         <div style={{background:"linear-gradient(135deg,#FFF4F0 0%,#FFEDE5 100%)",border:"2px solid var(--or)",borderRadius:12,padding:14,marginBottom:14,boxShadow:"0 4px 16px rgba(238,77,45,.12)"}}>
           <div style={{display:"flex",alignItems:"center",gap:9,marginBottom:12,flexWrap:"wrap"}}>
             <div style={{width:36,height:36,borderRadius:"50%",background:"var(--or-grad)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,boxShadow:"var(--sh-or)"}}>🎯</div>
@@ -2457,6 +2446,14 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
             <div style={{background:"#FEE2E2",border:"1px solid #FCA5A5",borderRadius:8,padding:"10px 12px",marginBottom:10,fontSize:11.5,color:"#B91C1C",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
               <i className="ti ti-alert-triangle" style={{fontSize:14}}/>
               Không có shipper nào đang trực trong ca hiện tại. Vào <b>Cài đặt → Lịch ca</b> để phân shipper vào ca.
+            </div>
+          )}
+
+          {needCoord.length===0 && (
+            <div style={{background:"#fff",border:"1px dashed var(--bd)",borderRadius:8,padding:"14px 16px",textAlign:"center",color:"var(--mut)",fontSize:12}}>
+              <i className="ti ti-coffee" style={{fontSize:22,display:"block",marginBottom:6,opacity:.5,color:"var(--or)"}}/>
+              Chưa có đơn ship nào đang pha / sẵn sàng giao.<br/>
+              <span style={{fontSize:10.5}}>Khi đơn ship chuyển sang trạng thái <b>"Đang pha"</b> hoặc <b>"Chờ shipper"</b>, đơn sẽ xuất hiện ở đây để phân công.</span>
             </div>
           )}
 
@@ -2574,6 +2571,19 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
           </div>
         </div>
       )}
+
+      {/* Stats — sau HERO để HERO nổi bật trên cùng */}
+      <div className="grid-stats-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:14}}>
+        {stats.map(s=>(
+          <div key={s.l} className="card" style={{padding:"13px 14px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:6}}>
+              <div style={{fontSize:11,color:"#767676"}}>{s.l}</div>
+              <div style={{width:32,height:32,borderRadius:7,background:s.bg,display:"flex",alignItems:"center",justifyContent:"center"}}><i className={`ti ${s.ic}`} style={{fontSize:15,color:s.tc}}/></div>
+            </div>
+            <div style={{fontSize:22,fontWeight:800,color:"#212121"}}>{s.v}</div>
+          </div>
+        ))}
+      </div>
 
       <div className="card" style={{padding:14,marginBottom:14}}>
         <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:10,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
