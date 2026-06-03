@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.10.0</title>
+<title>BaBayBite v1.10.1</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -247,7 +247,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.10.0";
+const VERSION = "1.10.1";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -1171,6 +1171,28 @@ function KpiPicker({staff,value,onChange,inShiftIds,inp}){
 }
 
 /* ══════════════════════════════════════════════════════════
+   CONFIRM DIALOG (Big Update) — pop-up xác nhận hành động
+══════════════════════════════════════════════════════════ */
+function ConfirmDialog({title,message,detail,confirmLabel="Xác nhận",cancelLabel="Quay lại",danger=false,icon="⚠️",onConfirm,onClose}){
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:1100,display:"flex",alignItems:"center",justifyContent:"center",padding:20,animation:"fadeIn .15s"}}>
+      <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:380,padding:"20px 20px 16px",animation:"fadeUp .2s ease",textAlign:"center"}}>
+        <div style={{fontSize:38,marginBottom:8}}>{icon}</div>
+        <div style={{fontSize:16,fontWeight:800,color:"var(--text)",marginBottom:6}}>{title}</div>
+        {message && <div style={{fontSize:12.5,color:"var(--mut)",lineHeight:1.55,marginBottom:detail?10:4}}>{message}</div>}
+        {detail && <div style={{fontSize:12,color:"var(--text2)",background:"#FAFAFA",border:"1px solid var(--bd2)",borderRadius:"var(--r-sm)",padding:"9px 11px",marginBottom:6,textAlign:"left"}}>{detail}</div>}
+        <div style={{display:"flex",gap:8,marginTop:14}}>
+          <button onClick={onClose} style={{flex:1,padding:"11px",border:"1px solid var(--bd)",background:"#fff",borderRadius:"var(--r-md)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)"}}>{cancelLabel}</button>
+          <button onClick={onConfirm} autoFocus
+            style={{flex:1.4,padding:"11px",border:"none",borderRadius:"var(--r-md)",fontSize:13.5,fontWeight:800,cursor:"pointer",color:"#fff",background:danger?"linear-gradient(135deg,#EF4444,#B91C1C)":"linear-gradient(135deg,var(--or),var(--ord))"}}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════
    EDIT ORDER MODAL (Big Update) — sửa đơn SAU KHI đã chốt
    Quyền: trưởng ca / trực đơn / admin. Hiển thị dạng pop-up.
    Tự đối soát kho theo chênh lệch số lượng khi lưu.
@@ -1182,17 +1204,14 @@ function EditOrderModal({order,products,categories,zones,staff,currentUser,shift
   const [d,setD] = useState(()=>({
     cus:order.cus||"", ph:order.ph||"", type:order.type||"tai_cho", adr:order.adr||"",
     zone: zoneIdx0===-1?0:zoneIdx0,
-    kpi:order.kpi, pay:order.pay||"cash", dT:order.dT||"fixed", disc:0, note:order.note||"",
+    kpi:order.kpi, pay:order.pay||"cash",
+    // disc của đơn cũ lưu là SỐ TIỀN tuyệt đối → hiển thị/sửa dạng "đ" (fixed)
+    dT:"fixed", disc:order.disc||0, note:order.note||"",
     items:(order.items||[]).map(i=>({...i})), schA:order.schA||"", schD:order.schD||"",
   }));
   const [cat,setCat]=useState(cats[0]?.key||"pha_che");
   const [search,setSrch]=useState("");
   const [noteFor,setNoteFor]=useState(null);
-
-  // disc của đơn cũ là số tiền tuyệt đối (đã clamp lúc tạo). Khởi tạo lại theo dT.
-  useEffect(()=>{
-    setD(s=>({...s, dT:"fixed", disc:order.disc||0}));
-  },[]);
 
   const sub   = d.items.reduce((s,i)=>s+i.p*i.qty,0);
   const dFee  = d.type==="ship" ? (zones[d.zone]||{fee:0}).fee : 0;
@@ -1226,6 +1245,8 @@ function EditOrderModal({order,products,categories,zones,staff,currentUser,shift
     const updated={...order, cus:d.cus.trim(), ph:d.ph, type:d.type,
       adr:d.type==="ship"?d.adr:"", items:d.items.map(i=>({...i})),
       pay:d.pay, dFee, disc:discAmt, dT:d.dT, kpi:d.kpi, note:d.note,
+      // đổi sang "tại chỗ" → bỏ shipper + hẹn giao
+      sid:d.type==="ship"?order.sid:null,
       schA:d.type==="ship"?(d.schA||""):"", schD:d.type==="ship"&&d.schA?(d.schD||todayISO()):""};
     onSave(order, updated);
   };
@@ -1370,6 +1391,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
   const erole = effectiveRole || currentUser?.role;
   const canEditOrder = ["truong_ca","truc_don","admin"].includes(erole);
   const [editId,setEditId] = useState(null);
+  const [cancelId,setCancelId] = useState(null);
   const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:""};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
@@ -1435,6 +1457,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
     toast(`✅ Đã cập nhật đơn ${newO.id}`,"success");
   };
   const editOrder = editId ? orders.find(o=>o.id===editId) : null;
+  const cancelOrder = cancelId ? orders.find(o=>o.id===cancelId) : null;
   const active=orders.filter(o=>!["hoan_thanh","huy","cho_xac_nhan"].includes(o.st));
   // v1.5: đơn khách tự đặt chờ duyệt
   const pendingApproval = orders.filter(o=>o.st==="cho_xac_nhan").sort((a,b)=>a.num-b.num);
@@ -1792,7 +1815,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
                         <i className="ti ti-edit" style={{fontSize:12,marginRight:2}}/>Sửa
                       </button>
                     )}
-                    <button onClick={()=>cancel(o.id)} className="btn-ghost"
+                    <button onClick={()=>setCancelId(o.id)} className="btn-ghost"
                       style={{fontSize:11,padding:"5px 11px",borderRadius:"var(--r-sm)",color:"var(--err)",borderColor:"#FCA5A5"}}
                       onMouseOver={e=>{e.currentTarget.style.background="var(--err-bg)";e.currentTarget.style.color="var(--err)"}}
                       onMouseOut={e=>{e.currentTarget.style.background="#fff";e.currentTarget.style.color="var(--err)"}}>
@@ -1817,6 +1840,16 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
         <EditOrderModal order={editOrder} products={products} categories={categories} zones={zones}
           staff={staff} currentUser={currentUser} shiftAssignments={shiftAssignments} currentShift={currentShift}
           onClose={()=>setEditId(null)} onSave={saveEdit}/>
+      )}
+      {cancelOrder && (
+        <ConfirmDialog
+          icon="🗑️" danger
+          title={`Huỷ đơn ${cancelOrder.id}?`}
+          message="Đơn sẽ chuyển sang trạng thái ĐÃ HUỶ và hoàn lại kho. Không thể hoàn tác."
+          detail={<span><b>{cancelOrder.cus}</b>{cancelOrder.ph?` · ${cancelOrder.ph}`:""}<br/>{cancelOrder.items.map(i=>`${i.name}×${i.qty}`).join(", ")}<br/><b style={{color:"var(--or)"}}>{fmt(iTot(cancelOrder))}</b></span>}
+          confirmLabel="Huỷ đơn" cancelLabel="Không"
+          onConfirm={()=>{cancel(cancelOrder.id);setCancelId(null);}}
+          onClose={()=>setCancelId(null)}/>
       )}
     </div>
   );

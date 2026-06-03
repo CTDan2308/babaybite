@@ -6,6 +6,25 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.10.1] — 2026-06-03 (+07)
+
+🗑️ **Xác nhận khi huỷ đơn** (pop-up) + tinh chỉnh sửa đơn
+
+### Added
+- **Xác nhận huỷ đơn:** nút Huỷ ở màn Trực đơn nay mở **pop-up xác nhận** (component `ConfirmDialog`)
+  hiển thị mã đơn, khách, danh sách món & tổng tiền + cảnh báo "không thể hoàn tác" trước khi huỷ.
+  Tránh huỷ nhầm. (Đã verify live: mở dialog → "Không" thì đơn giữ nguyên.)
+
+### Changed / Fixed
+- **Sửa đơn:** khi đổi loại đơn **Ship → Tại chỗ**, tự **bỏ shipper đã phân** (`sid=null`) và xoá hẹn giao.
+- **Sửa đơn:** khởi tạo giảm giá gọn lại (bỏ `useEffect` thừa, set thẳng dạng "đ" theo số tiền đã lưu) — hết nhấp nháy 1 frame.
+
+### Verified (live preview)
+- Trưởng ca thấy nút ✏️ Sửa; modal mở đúng cho đơn ship (khách/KPI/địa chỉ/phí ship/hẹn giao/món/giảm giá/tổng).
+- 50 account demo đã chạy (KPI picker hiển thị nhân sự từ `supabase-50-accounts.sql`).
+
+---
+
 ## [1.10.0] — 2026-06-03 (+07)
 
 ✏️ **Sửa đơn sau khi đã chốt** (pop-up) + 🛵 **Trực đơn được phân shipper** + 👥 **Script 50 account demo**
