@@ -6,6 +6,28 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.10.0] — 2026-06-03 (+07)
+
+✏️ **Sửa đơn sau khi đã chốt** (pop-up) + 🛵 **Trực đơn được phân shipper** + 👥 **Script 50 account demo**
+
+### Added
+- **Sửa đơn đã chốt (pop-up):** Trưởng ca / Trực đơn / Admin có nút **✏️ Sửa** trên mỗi đơn đang xử lý.
+  Mở modal pop-up cho phép sửa: khách hàng, SĐT, người nhận KPI, loại đơn (tại chỗ/ship),
+  địa chỉ + phí ship, hẹn ngày/giờ giao, thêm/bớt món & số lượng, giảm giá, thanh toán, ghi chú.
+  Khi lưu **tự đối soát kho** theo chênh lệch số lượng (tăng → trừ thêm kho, giảm → hoàn kho);
+  giới hạn số lượng tối đa = tồn kho hiện tại + phần đã trừ cho chính đơn đó.
+- **Trực đơn được phân shipper:** thêm màn **Giao hàng** vào quyền `truc_don` và cho phép trực đơn
+  bấm phân công shipper (trước đây chỉ trưởng ca / admin).
+- **`supabase-50-accounts.sql`:** script seed **50 tài khoản demo** (2 admin · 6 trưởng ca · 14 trực đơn ·
+  14 pha chế · 14 shipper), id 101–150, PIN 1001–1050, idempotent (`ON CONFLICT DO NOTHING`).
+  Tự sửa name/role/pin theo nhân sự thật khi triển khai.
+
+### Changed
+- `ROLE_PERMS.truc_don`: `["order","dashboard"]` → `["order","shipper","dashboard"]`.
+- Thông báo từ chối phân shipper đổi thành "Bạn không có quyền phân công shipper".
+
+---
+
 ## [1.9.5] — 2026-06-02 18:15 (+07)
 
 📅 **Quản trị theo NGÀY** + ⏰ **Hẹn ngày giao + nhắc làm đơn trước giờ** + 🐞 fix UI/UX

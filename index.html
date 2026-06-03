@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.9.5</title>
+<title>BaBayBite v1.10.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -241,13 +241,13 @@ const CL_FALLBACK = {pha_che:"☕ Đồ pha chế",san_co:"📦 Đồ sẵn có"
 /* Role permissions — mỗi role chỉ thấy các màn liên quan để tập trung */
 const ROLE_PERMS = {
   truong_ca: ["dashboard","order","kitchen","shipper","staff","report"],
-  truc_don:  ["order","dashboard"],
+  truc_don:  ["order","shipper","dashboard"],
   pha_che:   ["kitchen"],
   shipper:   ["shipper"],
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.9.5";
+const VERSION = "1.10.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -1170,8 +1170,206 @@ function KpiPicker({staff,value,onChange,inShiftIds,inp}){
   );
 }
 
-function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zones,categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
+/* ══════════════════════════════════════════════════════════
+   EDIT ORDER MODAL (Big Update) — sửa đơn SAU KHI đã chốt
+   Quyền: trưởng ca / trực đơn / admin. Hiển thị dạng pop-up.
+   Tự đối soát kho theo chênh lệch số lượng khi lưu.
+══════════════════════════════════════════════════════════ */
+function EditOrderModal({order,products,categories,zones,staff,currentUser,shiftAssignments=[],currentShift=null,onClose,onSave}){
+  const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
+  // zone index khớp với phí ship hiện tại (đơn lưu dFee, không lưu index)
+  const zoneIdx0 = order.type==="ship" ? Math.max(0, zones.findIndex(z=>z.fee===order.dFee)) : 0;
+  const [d,setD] = useState(()=>({
+    cus:order.cus||"", ph:order.ph||"", type:order.type||"tai_cho", adr:order.adr||"",
+    zone: zoneIdx0===-1?0:zoneIdx0,
+    kpi:order.kpi, pay:order.pay||"cash", dT:order.dT||"fixed", disc:0, note:order.note||"",
+    items:(order.items||[]).map(i=>({...i})), schA:order.schA||"", schD:order.schD||"",
+  }));
+  const [cat,setCat]=useState(cats[0]?.key||"pha_che");
+  const [search,setSrch]=useState("");
+  const [noteFor,setNoteFor]=useState(null);
+
+  // disc của đơn cũ là số tiền tuyệt đối (đã clamp lúc tạo). Khởi tạo lại theo dT.
+  useEffect(()=>{
+    setD(s=>({...s, dT:"fixed", disc:order.disc||0}));
+  },[]);
+
+  const sub   = d.items.reduce((s,i)=>s+i.p*i.qty,0);
+  const dFee  = d.type==="ship" ? (zones[d.zone]||{fee:0}).fee : 0;
+  const discAmt = d.dT==="pct" ? Math.round(sub*Math.min(Math.max(d.disc||0,0),100)/100) : Math.min(Math.max(d.disc||0,0),sub);
+  const total = sub+dFee-discAmt;
+
+  const stockOf = pid => { const p=products.find(x=>x.id===pid); return p?p.stock:0; };
+  const origQty = pid => (order.items.find(i=>i.pid===pid)||{qty:0}).qty;
+  // kho khả dụng cho 1 sp khi sửa = stock hiện tại + đã trừ cho đơn này (origQty)
+  const availFor = pid => stockOf(pid) + origQty(pid);
+
+  const visible = products.filter(p=>p.on!==false);
+  const filtered= visible.filter(p=>p.cat===cat&&(!search||p.name.toLowerCase().includes(search.toLowerCase())));
+  const cqty = pid => (d.items.find(i=>i.pid===pid)||{qty:0}).qty;
+
+  const setQty=(pid,q)=>{
+    const max=availFor(pid);
+    if(q>max) q=max;
+    if(q<=0) setD(s=>({...s,items:s.items.filter(i=>i.pid!==pid)}));
+    else     setD(s=>({...s,items:s.items.map(i=>i.pid===pid?{...i,qty:q}:i)}));
+  };
+  const addItem=p=>{
+    if(availFor(p.id)<=cqty(p.id)) return;
+    setD(s=>{const ex=s.items.find(i=>i.pid===p.id);return ex?{...s,items:s.items.map(i=>i.pid===p.id?{...i,qty:i.qty+1}:i)}:{...s,items:[...s.items,{pid:p.id,name:p.name,p:p.price,qty:1,note:""}]};});
+  };
+  const setNote=(pid,note)=>setD(s=>({...s,items:s.items.map(i=>i.pid===pid?{...i,note}:i)}));
+
+  const save=()=>{
+    if(!d.cus.trim()) return;
+    if(!d.items.length) return;
+    const updated={...order, cus:d.cus.trim(), ph:d.ph, type:d.type,
+      adr:d.type==="ship"?d.adr:"", items:d.items.map(i=>({...i})),
+      pay:d.pay, dFee, disc:discAmt, dT:d.dT, kpi:d.kpi, note:d.note,
+      schA:d.type==="ship"?(d.schA||""):"", schD:d.type==="ship"&&d.schA?(d.schD||todayISO()):""};
+    onSave(order, updated);
+  };
+
+  const lbl={fontSize:10,color:"var(--mut)",marginBottom:4,fontWeight:600,textTransform:"uppercase",letterSpacing:.3};
+  const inp={width:"100%",padding:"8px 11px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",fontSize:12.5,background:"#fff"};
+
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:1000,display:"flex",alignItems:"center",justifyContent:"center",padding:16,animation:"fadeIn .15s"}}>
+      <div style={{background:"#fff",borderRadius:14,width:"100%",maxWidth:520,maxHeight:"92vh",display:"flex",flexDirection:"column",animation:"fadeUp .2s ease",overflow:"hidden"}}>
+        {/* header */}
+        <div style={{padding:"13px 16px",borderBottom:"1px solid var(--bd)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(180deg,#fff,#FAFAFA)",flexShrink:0}}>
+          <div style={{display:"flex",alignItems:"center",gap:8}}>
+            <span style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>✏️ Sửa đơn</span>
+            <span style={{fontFamily:"ui-monospace,monospace",fontSize:13,fontWeight:800,color:"var(--or)"}}>{order.id}</span>
+            <Bdg s={order.st}/>
+          </div>
+          <button onClick={onClose} style={{background:"#f0f0f0",border:"none",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:14,color:"var(--mut)"}}>✕</button>
+        </div>
+
+        {/* body scroll */}
+        <div style={{flex:1,overflowY:"auto",padding:"14px 16px"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 130px",gap:8,marginBottom:9}}>
+            <div><div style={lbl}>Khách hàng *</div>
+              <input value={d.cus} onChange={e=>setD(s=>({...s,cus:e.target.value}))} style={inp}/></div>
+            <div><div style={lbl}>SĐT</div>
+              <input value={d.ph} onChange={e=>setD(s=>({...s,ph:e.target.value}))} style={inp} inputMode="tel"/></div>
+          </div>
+          <div style={{marginBottom:9}}>
+            <div style={lbl}>Người nhận KPI</div>
+            <KpiPicker staff={staff} value={d.kpi} onChange={id=>setD(s=>({...s,kpi:id}))}
+              inShiftIds={new Set(shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").map(a=>a.staff_id))} inp={inp}/>
+          </div>
+          <div style={{marginBottom:9}}>
+            <div style={lbl}>Loại đơn</div>
+            <div style={{display:"flex",gap:6}}>
+              {[["tai_cho","🏠","Tại chỗ"],["ship","🛵","Ship"]].map(([v,e,l])=>(
+                <button key={v} onClick={()=>setD(s=>({...s,type:v}))}
+                  style={{flex:1,padding:"8px 4px",border:`1.5px solid ${d.type===v?"var(--or)":"var(--bd)"}`,borderRadius:"var(--r-sm)",cursor:"pointer",background:d.type===v?"var(--orl)":"#fff",color:d.type===v?"var(--or)":"var(--text2)",fontSize:12,fontWeight:d.type===v?700:500}}>{e} {l}</button>
+              ))}
+            </div>
+          </div>
+          {d.type==="ship" && (
+            <div style={{marginBottom:9,paddingTop:8,borderTop:"1px dashed var(--bd)"}}>
+              <div style={lbl}>📍 Địa chỉ giao</div>
+              <input value={d.adr} onChange={e=>setD(s=>({...s,adr:e.target.value}))} style={{...inp,marginBottom:6}}/>
+              <div style={lbl}>Phí ship</div>
+              <div style={{display:"flex",gap:5,marginBottom:8}}>
+                {zones.map((z,i)=>(
+                  <button key={i} onClick={()=>setD(s=>({...s,zone:i}))}
+                    style={{flex:1,padding:"7px 4px",border:`1.5px solid ${d.zone===i?"var(--or)":"var(--bd)"}`,borderRadius:"var(--r-sm)",cursor:"pointer",background:d.zone===i?"var(--orl)":"#fff",fontSize:10.5,textAlign:"center"}}>
+                    <div style={{fontWeight:800,color:d.zone===i?"var(--or)":"var(--text)"}}>{fmt(z.fee)}</div>
+                    <div style={{fontSize:9.5,color:"var(--mut2)"}}>{z.lb}</div></button>
+                ))}
+              </div>
+              <div style={lbl}><i className="ti ti-clock-hour-4" style={{fontSize:11,marginRight:3}}/>Hẹn giao (tùy chọn)</div>
+              <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                <input type="date" value={d.schD} min={todayISO()} onChange={e=>setD(s=>({...s,schD:e.target.value}))} style={{...inp,padding:"7px 10px",flex:1.3}}/>
+                <input type="time" value={d.schA} onChange={e=>setD(s=>({...s,schA:e.target.value}))} style={{...inp,padding:"7px 10px",flex:1}}/>
+                {(d.schA||d.schD) && <button onClick={()=>setD(s=>({...s,schA:"",schD:""}))} style={{padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",background:"#fff",cursor:"pointer",fontSize:11,color:"var(--mut)"}}>✕</button>}
+              </div>
+            </div>
+          )}
+
+          {/* danh sách món hiện tại */}
+          <div style={{marginTop:6,marginBottom:8}}>
+            <div style={lbl}>🛒 Món trong đơn ({d.items.reduce((s,i)=>s+i.qty,0)})</div>
+            {d.items.length===0 && <div style={{textAlign:"center",padding:"12px 0",color:"var(--mut2)",fontSize:11.5}}>Giỏ trống — thêm món bên dưới</div>}
+            {d.items.map(i=>(
+              <div key={i.pid} style={{padding:"7px 0",borderBottom:"1px dashed var(--bd2)"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{flex:1,fontSize:12,fontWeight:600,color:"var(--text)"}}>{i.name}</span>
+                  <Qty val={i.qty} onInc={()=>setQty(i.pid,i.qty+1)} onDec={()=>setQty(i.pid,i.qty-1)} min={1} max={availFor(i.pid)} sm/>
+                  <span style={{fontSize:11.5,color:"var(--or)",minWidth:64,textAlign:"right",fontWeight:700}}>{fmt(i.p*i.qty)}</span>
+                  <button onClick={()=>setQty(i.pid,0)} aria-label="Xoá" style={{background:"transparent",border:"none",cursor:"pointer",color:"var(--mut2)",fontSize:14,padding:2}}><i className="ti ti-trash"/></button>
+                </div>
+                {noteFor===i.pid
+                  ? <input autoFocus value={i.note||""} onChange={e=>setNote(i.pid,e.target.value)} onBlur={()=>setNoteFor(null)} placeholder="VD: ít đường..." style={{...inp,padding:"5px 9px",fontSize:11,marginTop:5}}/>
+                  : <button onClick={()=>setNoteFor(i.pid)} style={{fontSize:10.5,color:i.note?"var(--or)":"var(--mut2)",background:"none",border:"none",cursor:"pointer",paddingLeft:0,marginTop:3,fontWeight:i.note?600:500}}>{i.note?`📝 ${i.note}`:"+ Ghi chú món"}</button>}
+              </div>
+            ))}
+          </div>
+
+          {/* thêm món */}
+          <details style={{marginBottom:8}}>
+            <summary style={{cursor:"pointer",fontSize:11.5,fontWeight:700,color:"var(--or)",padding:"6px 0"}}>＋ Thêm sản phẩm</summary>
+            <input value={search} onChange={e=>setSrch(e.target.value)} placeholder="Tìm sản phẩm..." style={{...inp,margin:"6px 0"}}/>
+            <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:4,marginBottom:6}}>
+              {cats.map(c=>(
+                <button key={c.key} onClick={()=>setCat(c.key)} style={{flexShrink:0,fontSize:10.5,padding:"5px 11px",border:`1.5px solid ${cat===c.key?"var(--or)":"var(--bd)"}`,borderRadius:"var(--r-pill)",cursor:"pointer",background:cat===c.key?"var(--or)":"#fff",color:cat===c.key?"#fff":"var(--text2)",fontWeight:cat===c.key?700:500,whiteSpace:"nowrap"}}>{c.label}</button>
+              ))}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:6}}>
+              {filtered.map(p=>{const q=cqty(p.id);const left=availFor(p.id)-q;return (
+                <button key={p.id} onClick={()=>addItem(p)} disabled={left<=0}
+                  style={{textAlign:"left",border:`1.5px solid ${q>0?"var(--or)":"var(--bd2)"}`,borderRadius:"var(--r-sm)",padding:"7px 8px",background:q>0?"var(--orl)":"#fff",cursor:left<=0?"not-allowed":"pointer",opacity:left<=0?.5:1}}>
+                  <div style={{fontSize:11,fontWeight:600,color:"var(--text)",lineHeight:1.3}}>{p.emoji} {p.name}</div>
+                  <div style={{fontSize:11,color:"var(--or)",fontWeight:700,marginTop:2}}>{fmt(p.price)} <span style={{color:"var(--mut2)",fontWeight:500}}>· còn {left}</span></div>
+                </button>
+              );})}
+            </div>
+          </details>
+
+          {/* giảm giá + thanh toán */}
+          <div style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+            <select value={d.dT} onChange={e=>setD(s=>({...s,dT:e.target.value,disc:0}))} style={{width:110,padding:"7px 9px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",fontSize:11,background:"#fff",cursor:"pointer",fontWeight:600}}>
+              <option value="fixed">Giảm (đ)</option><option value="pct">Giảm (%)</option>
+            </select>
+            <input type="number" min={0} value={d.disc||""} onChange={e=>setD(s=>({...s,disc:+e.target.value}))} placeholder={d.dT==="pct"?"10":"0"} style={{flex:1,padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:"var(--r-sm)",fontSize:12}}/>
+            {discAmt>0 && <span className="chip" style={{background:"var(--ok-bg)",color:"var(--ok)",fontSize:11}}>−{fmt(discAmt)}</span>}
+          </div>
+          <div style={{display:"flex",gap:6,marginBottom:8}}>
+            {[["cash","💵","Tiền mặt"],["qr","📱","VietQR"]].map(([v,e,l])=>(
+              <button key={v} onClick={()=>setD(s=>({...s,pay:v}))} style={{flex:1,padding:"7px 4px",border:`1.5px solid ${d.pay===v?"var(--ok)":"var(--bd)"}`,borderRadius:"var(--r-sm)",cursor:"pointer",background:d.pay===v?"var(--ok-bg)":"#fff",color:d.pay===v?"var(--ok)":"var(--text2)",fontSize:11.5,fontWeight:d.pay===v?700:500}}>{e} {l}</button>
+            ))}
+          </div>
+          <input value={d.note||""} onChange={e=>setD(s=>({...s,note:e.target.value}))} placeholder="📝 Ghi chú đơn..." style={{...inp,fontSize:11.5}}/>
+        </div>
+
+        {/* footer */}
+        <div style={{padding:"11px 16px",borderTop:"1px solid var(--bd)",background:"#fff",flexShrink:0}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,fontSize:12}}>
+            <span style={{color:"var(--mut)"}}>{d.items.reduce((s,i)=>s+i.qty,0)} món · {d.type==="ship"?"Ship":"Tại chỗ"}</span>
+            <span style={{color:"var(--text2)"}}>Tổng <strong style={{color:"var(--or)",fontSize:15,marginLeft:4}}>{fmt(total)}</strong></span>
+          </div>
+          <div style={{display:"flex",gap:8}}>
+            <button onClick={onClose} style={{flex:1,padding:"11px",border:"1px solid var(--bd)",background:"#fff",borderRadius:"var(--r-md)",cursor:"pointer",fontSize:13,fontWeight:600,color:"var(--text2)"}}>Huỷ bỏ</button>
+            <button onClick={save} disabled={!d.items.length||!d.cus.trim()} className={d.items.length&&d.cus.trim()?"btn-pri-grad":""}
+              style={{flex:2,padding:"11px",border:"none",borderRadius:"var(--r-md)",fontSize:13.5,fontWeight:800,cursor:d.items.length&&d.cus.trim()?"pointer":"not-allowed",background:d.items.length&&d.cus.trim()?"":"#e5e5e5",color:d.items.length&&d.cus.trim()?"":"#999",display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+              <i className="ti ti-device-floppy" style={{fontSize:16}}/>Lưu thay đổi
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,effectiveRole,zones,categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
   const isAdmin = currentUser?.role === "admin";
+  const erole = effectiveRole || currentUser?.role;
+  const canEditOrder = ["truong_ca","truc_don","admin"].includes(erole);
+  const [editId,setEditId] = useState(null);
   const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:""};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
@@ -1224,6 +1422,19 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
     setOrders(os=>os.map(x=>x.id===id?{...x,st:"huy"}:x));
     toast("Đã huỷ đơn · đã hoàn kho","warn");
   };
+  // Big Update: lưu sửa đơn đã chốt — đối soát kho theo chênh lệch số lượng
+  const saveEdit=(oldO,newO)=>{
+    setProducts(ps=>ps.map(p=>{
+      const oq=(oldO.items.find(i=>i.pid===p.id)||{qty:0}).qty;
+      const nq=(newO.items.find(i=>i.pid===p.id)||{qty:0}).qty;
+      const delta=nq-oq; // >0 cần trừ thêm kho, <0 hoàn kho
+      return delta ? {...p,stock:Math.max(0,p.stock-delta)} : p;
+    }));
+    setOrders(os=>os.map(x=>x.id===newO.id?newO:x));
+    setEditId(null);
+    toast(`✅ Đã cập nhật đơn ${newO.id}`,"success");
+  };
+  const editOrder = editId ? orders.find(o=>o.id===editId) : null;
   const active=orders.filter(o=>!["hoan_thanh","huy","cho_xac_nhan"].includes(o.st));
   // v1.5: đơn khách tự đặt chờ duyệt
   const pendingApproval = orders.filter(o=>o.st==="cho_xac_nhan").sort((a,b)=>a.num-b.num);
@@ -1573,6 +1784,14 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
                     <span className="chip" style={{marginLeft:6,fontSize:10}}>{o.pay==="qr"?"📱 QR":"💵 Mặt"}</span>
                   </div>
                   <div style={{display:"flex",gap:5}}>
+                    {canEditOrder && (
+                      <button onClick={()=>setEditId(o.id)} className="btn-ghost"
+                        style={{fontSize:11,padding:"5px 11px",borderRadius:"var(--r-sm)",color:"var(--info)",borderColor:"#93C5FD"}}
+                        onMouseOver={e=>{e.currentTarget.style.background="#EFF6FF"}}
+                        onMouseOut={e=>{e.currentTarget.style.background="#fff"}}>
+                        <i className="ti ti-edit" style={{fontSize:12,marginRight:2}}/>Sửa
+                      </button>
+                    )}
                     <button onClick={()=>cancel(o.id)} className="btn-ghost"
                       style={{fontSize:11,padding:"5px 11px",borderRadius:"var(--r-sm)",color:"var(--err)",borderColor:"#FCA5A5"}}
                       onMouseOver={e=>{e.currentTarget.style.background="var(--err-bg)";e.currentTarget.style.color="var(--err)"}}
@@ -1594,6 +1813,11 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,zo
           );
         })}
       </div>
+      {editOrder && (
+        <EditOrderModal order={editOrder} products={products} categories={categories} zones={zones}
+          staff={staff} currentUser={currentUser} shiftAssignments={shiftAssignments} currentShift={currentShift}
+          onClose={()=>setEditId(null)} onSave={saveEdit}/>
+      )}
     </div>
   );
 }
@@ -2429,7 +2653,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
   // v1.9.1: 2-step assign — chọn shipper rồi mới chốt
   const [pendingPick,setPendingPick] = useState({}); // {[orderId]: shipperId}
   const isShipper   = effectiveRole==="shipper";
-  const canAssign   = effectiveRole==="truong_ca" || effectiveRole==="admin";
+  const canAssign   = effectiveRole==="truong_ca" || effectiveRole==="admin" || effectiveRole==="truc_don";
 
   const ship    = orders.filter(o=>o.type==="ship");
   // v1.9.1: shipper ĐANG TRONG CA HOẠT ĐỘNG (theo shift_assignments, fallback role mặc định nếu chưa có ca)
@@ -2452,7 +2676,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
     setProducts(ps=>ps.map(p=>{const ci=o.items.find(i=>i.pid===p.id);return ci?{...p,stock:p.stock+ci.qty}:p;}));
   };
   const assign  = (oid,sid)=>{
-    if (!canAssign) { toast("Chỉ Trưởng ca / Admin mới được phân công shipper","warn"); return; }
+    if (!canAssign) { toast("Bạn không có quyền phân công shipper","warn"); return; }
     const o = orders.find(x=>x.id===oid);
     // v1.6: re-assign — nếu shipper cũ đã pickup/đang giao thì reset về san_sang để shipper mới bắt đầu lại
     const patch = {sid};
@@ -4737,7 +4961,7 @@ function App(){
     dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
                comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder} viewDate={viewDate} setViewDate={setViewDate}/>},
     order:    {title:"Trực đơn",         sub:"Nhận & tạo đơn hàng · Tách KPI người sale",
-               comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} zones={zones} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
+               comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
     kitchen:  {title:"Pha chế (KDS)",    sub:"Kitchen Display System · Realtime",
                comp:<KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>},
     shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển",
