@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.10.1</title>
+<title>BaBayBite v1.10.2</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -141,6 +141,9 @@ const orderId = num => "ĐH" + String(num).padStart(3,"0");
    Nếu CHƯA chạy migration: KHÔNG gửi schedule_date để tránh lỗi 400 vỡ mọi thao tác ghi đơn.
    Tính năng "hẹn NGÀY" sẽ tự bật khi chạy ALTER TABLE trong supabase-schema.sql + reload. */
 let SCHED_DATE_OK = true;
+/* Big Update: cờ — DB đã có cột staff.tg_token chưa? (lưu BOT_TOKEN Telegram ở các acc admin để sync mọi máy)
+   Chưa migrate → KHÔNG ghi tg_token (tránh 400). Token vẫn dùng được dạng localStorage từng máy. */
+let TG_DB_OK = false;
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
 const productToDb   = p => ({id:p.id,name:p.name,cat:p.cat,price:p.price,stock:p.stock,on_menu:p.on!==false,emoji:p.emoji,recipe:p.recipe});
 const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",createdAt:r.created_at||""});
@@ -247,7 +250,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.10.1";
+const VERSION = "1.10.2";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -3274,15 +3277,29 @@ function TelegramSettings({staff,setStaff,toast}){
   const [busy,setBusy] = useState(false);
   const [updates,setUpdates] = useState([]);
 
+  // Big Update: ghi/xoá BOT_TOKEN trên tất cả tài khoản admin (DB) để sync mọi máy.
+  // Dùng setStaff (diff-wrapper tự sync Supabase). Chỉ chạy khi cột tg_token đã tồn tại.
+  const persistToAdmins = (t)=>{
+    if (!TG_DB_OK) {
+      toast("⚠ Chưa có cột tg_token — token mới chỉ lưu máy này. Chạy migration (xem hướng dẫn) để lưu cho mọi máy admin.","warn");
+      return;
+    }
+    setStaff(ss=>ss.map(s=>s.role==="admin"?{...s,tg_token:t||null}:s));
+    toast(t?"✓ Đã lưu token cho tất cả tài khoản Admin":"✓ Đã xoá token khỏi tài khoản Admin","success");
+  };
+
   const saveToken = async ()=>{
     const t = token.trim();
     TG.setToken(t);
-    if (!t) { setBotInfo(null); toast("Đã xoá token","info"); return; }
+    if (!t) { setBotInfo(null); persistToAdmins(""); return; }
     setBusy(true);
     const me = await TG.getMe();
+    if (me?.ok) {
+      setBotInfo(me.result);
+      toast(`✓ Kết nối @${me.result.username}`,"success");
+      persistToAdmins(t);
+    } else { setBotInfo(null); toast("Token không hợp lệ","error"); }
     setBusy(false);
-    if (me?.ok) { setBotInfo(me.result); toast(`✓ Kết nối @${me.result.username}`,"success"); }
-    else { setBotInfo(null); toast("Token không hợp lệ","error"); }
   };
 
   const testSend = async (s)=>{
@@ -3342,7 +3359,7 @@ function TelegramSettings({staff,setStaff,toast}){
               <li>Mỗi thành viên chat với bot vừa tạo → gửi <code>/start</code> → bấm <b>"Quét chat đã /start"</b> bên dưới để tự liên kết</li>
               <li>Khi có đơn mới / cần shipper / gán shipper → bot gửi tin về cá nhân trên Telegram (kể cả khi không mở web)</li>
             </ol>
-            <div style={{marginTop:6,fontSize:10.5,color:"#475569"}}>⚠ Token lưu trong <b>localStorage của thiết bị này</b> — không sync sang máy khác. Mỗi máy admin/trưởng ca cần cấu hình riêng.</div>
+            <div style={{marginTop:6,fontSize:10.5,color:"#475569"}}>🔄 Token được <b>lưu vào tất cả tài khoản Admin</b> (DB) → mọi máy tự nạp khi mở app (cần chạy migration cột <code>tg_token</code>). ⚠ Lưu ý bảo mật: token nằm trong DB đọc được bằng anon key — chỉ dùng bot nội bộ.</div>
           </div>
         </div>
       </div>
@@ -3353,7 +3370,7 @@ function TelegramSettings({staff,setStaff,toast}){
           <input value={token} onChange={e=>setToken(e.target.value)} placeholder="123456:ABC-DEF..." type="password"
             style={{flex:1,padding:"9px 12px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12,fontFamily:"monospace"}}/>
           <button onClick={saveToken} disabled={busy} className="btn-pri" style={{padding:"9px 16px",borderRadius:6,fontSize:12}}>{busy?"...":"Lưu & Kiểm tra"}</button>
-          {TG.isOn() && <button onClick={()=>{setToken("");TG.setToken("");setBotInfo(null);toast("Đã xoá","info");}} style={{padding:"9px 14px",border:"1px solid #fca5a5",background:"#fff",color:"#b91c1c",borderRadius:6,cursor:"pointer",fontSize:12}}>Xoá token</button>}
+          {TG.isOn() && <button onClick={()=>{setToken("");TG.setToken("");setBotInfo(null);persistToAdmins("");}} style={{padding:"9px 14px",border:"1px solid #fca5a5",background:"#fff",color:"#b91c1c",borderRadius:6,cursor:"pointer",fontSize:12}}>Xoá token</button>}
         </div>
         {botInfo && (
           <div style={{marginTop:10,padding:"8px 12px",background:"#F0FDF4",border:"1px solid #BBF7D0",borderRadius:6,fontSize:11.5,color:"#166534",display:"flex",alignItems:"center",gap:8}}>
@@ -4657,6 +4674,12 @@ function App(){
         if (!SCHED_DATE_OK) console.warn("[BaBayBite] Cột 'schedule_date' chưa có trong DB — tính năng 'hẹn ngày giao' tạm tắt. Chạy ALTER TABLE trong supabase-schema.sql rồi reload để bật.");
         const ps = (pR.data||[]).map(productFromDb);
         const ss = sR.data||[];
+        // Big Update: phát hiện cột tg_token + tự nạp BOT_TOKEN từ acc admin (sync mọi máy)
+        TG_DB_OK = ss.length>0 && Object.prototype.hasOwnProperty.call(ss[0], "tg_token");
+        if (TG_DB_OK && !TG.isOn()) {
+          const adminTok = ss.filter(s=>s.role==="admin" && s.tg_token).sort((a,b)=>a.id-b.id)[0]?.tg_token;
+          if (adminTok) { TG.setToken(adminTok); console.info("[BaBayBite] Đã nạp Telegram BOT_TOKEN từ tài khoản admin."); }
+        }
         const os = (oR.data||[]).map(orderFromDb);
         const zs = zR.data||[];
         const sh = shR.data ? shiftFromDb(shR.data) : {name:"Ca sáng",start:"07:45",end:"12:00"};

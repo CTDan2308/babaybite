@@ -36,6 +36,9 @@ CREATE TABLE IF NOT EXISTS staff (
 -- v1.8: thêm column nếu DB cũ
 ALTER TABLE staff ADD COLUMN IF NOT EXISTS username TEXT;
 ALTER TABLE staff ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
+-- Big Update: BOT_TOKEN Telegram lưu ở các tài khoản admin → app tự nạp cho mọi máy.
+-- ⚠ Bảo mật: token đọc được bằng anon key (RLS open) — chỉ dùng cho bot nội bộ.
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS tg_token TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS staff_username_uniq ON staff(LOWER(username)) WHERE username IS NOT NULL AND username <> '';
 
 CREATE TABLE IF NOT EXISTS orders (

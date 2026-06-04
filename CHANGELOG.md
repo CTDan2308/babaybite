@@ -6,6 +6,28 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.10.2] — 2026-06-04 (+07)
+
+📲 **Telegram BOT_TOKEN lưu vào tài khoản Admin (sync mọi máy)**
+
+### ⚠️ CẦN CHẠY MIGRATION (để token sync đa thiết bị)
+Vào **Supabase → SQL Editor**, chạy:
+```sql
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS tg_token TEXT;
+```
+(Đã có sẵn trong `supabase-schema.sql`.) Chưa chạy thì token vẫn hoạt động kiểu **localStorage từng máy** như cũ — không vỡ gì.
+
+### Added / Changed
+- **Token theo tài khoản Admin:** khi admin bấm "Lưu & Kiểm tra" ở Cài đặt → Telegram Bot,
+  BOT_TOKEN được ghi vào **tất cả tài khoản admin** trên DB. Mọi máy (bất kỳ ai mở app)
+  **tự nạp token** lúc khởi động → Telegram chạy toàn hệ thống, không cần cấu hình từng máy.
+- Cờ `TG_DB_OK` phát hiện cột `tg_token` lúc khởi động; chưa migrate → không ghi (tránh lỗi 400).
+- "Xoá token" cũng xoá khỏi tất cả tài khoản admin.
+- ⚠️ **Lưu ý bảo mật:** token nằm trong bảng đọc được bằng anon key (RLS open) — chỉ dùng cho **bot nội bộ**.
+  Nếu cần bảo mật token, dùng cơ chế server-side riêng (không nằm trong scope hiện tại).
+
+---
+
 ## [1.10.1] — 2026-06-03 (+07)
 
 🗑️ **Xác nhận khi huỷ đơn** (pop-up) + tinh chỉnh sửa đơn
