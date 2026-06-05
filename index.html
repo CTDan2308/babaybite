@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.16.2</title>
+<title>BaBayBite v1.17.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -286,7 +286,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.16.2";
+const VERSION = "1.17.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -1565,6 +1565,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
   const [cancelId,setCancelId] = useState(null);
   const [q,setQ] = useState("");            // v1.15: tìm đơn đang xử lý
   const [stFilter,setStFilter] = useState("all"); // v1.15: lọc theo trạng thái
+  const [viewTab,setViewTab] = useState("active"); // v1.17: tách tab Đang xử lý / Đặt trước
   const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:"",pickupId:(pickupLocs[0]?.id??null)};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
@@ -1924,19 +1925,37 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
       </div>
 
       <div className="order-right">
-        <div style={{position:"sticky",top:-12,marginTop:-12,padding:"12px 0 10px",background:"var(--bg)",zIndex:2,display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,flexWrap:"wrap",marginBottom:4}}>
-          <div style={{fontSize:13,fontWeight:800,color:"var(--text)",display:"flex",alignItems:"center",gap:6}}>
-            <i className="ti ti-clock-bolt" style={{fontSize:16,color:"var(--or)"}}/>Đơn đang xử lý
-            <span className="chip chip-or">{active.length}</span>
-          </div>
-          <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-            {["moi","pha_che","san_sang","dang_giao"].map(s=>{
-              const n=orders.filter(o=>o.st===s).length;
-              return n>0&&<Bdg key={s} s={s}/>;
+        {/* v1.17: tách 2 tab riêng — Đang xử lý vs Đặt trước (không xếp chung cho dễ nhìn) */}
+        <div style={{position:"sticky",top:-12,marginTop:-12,padding:"12px 0 10px",background:"var(--bg)",zIndex:2,marginBottom:4}}>
+          <div style={{display:"flex",gap:6,background:"#fff",border:"1px solid var(--bd)",borderRadius:"var(--r-md)",padding:4,boxShadow:"var(--sh-sm)"}}>
+            {[
+              {k:"active",l:"Đang xử lý",icon:"ti-clock-bolt",n:active.length,col:"var(--or)"},
+              {k:"pre",l:"Đặt trước",icon:"ti-calendar-time",n:preOrders.length,col:"#CA8A04",alert:preOrders.some(o=>{const dl=minsToDeadline(o,nowTick);return dl!==null&&dl<=REMIND_LEAD;})},
+            ].map(t=>{
+              const on=viewTab===t.k;
+              return (
+                <button key={t.k} onClick={()=>setViewTab(t.k)}
+                  style={{flex:1,padding:"9px 8px",border:"none",borderRadius:"var(--r-sm)",cursor:"pointer",fontSize:12.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                    background:on?t.col:"transparent",color:on?"#fff":"var(--text2)",transition:"all .15s"}}>
+                  <i className={"ti "+t.icon} style={{fontSize:15}}/>{t.l}
+                  {t.n>0&&<span style={{fontSize:11,fontWeight:800,minWidth:18,height:18,padding:"0 5px",borderRadius:9,display:"inline-flex",alignItems:"center",justifyContent:"center",
+                    background:on?"rgba(255,255,255,.25)":(t.alert?"var(--err)":t.col),color:"#fff"}}>{t.n}</span>}
+                  {!on&&t.alert&&<span style={{width:7,height:7,borderRadius:"50%",background:"var(--err)",animation:"pulse 1.2s infinite"}}/>}
+                </button>
+              );
             })}
           </div>
+          {viewTab==="active" && (
+            <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:8}}>
+              {["moi","pha_che","san_sang","dang_giao"].map(s=>{
+                const n=orders.filter(o=>o.st===s).length;
+                return n>0&&<Bdg key={s} s={s}/>;
+              })}
+            </div>
+          )}
         </div>
 
+        {viewTab==="active" && <>
         {/* v1.15: tìm + lọc nhanh để không sót đơn khi số lượng lớn */}
         {active.length>0 && (
           <div style={{marginBottom:10,display:"flex",flexDirection:"column",gap:7}}>
@@ -2007,7 +2026,23 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
             </div>
           </div>
         )}
+        {active.length===0 && (
+          <div style={{textAlign:"center",padding:"60px 16px",color:"var(--mut2)"}}>
+            <i className="ti ti-mood-happy" style={{fontSize:54,display:"block",marginBottom:12,opacity:.6}}/>
+            <div style={{fontSize:13,fontWeight:500}}>Không có đơn nào đang xử lý</div>
+            <div style={{fontSize:11,marginTop:4,color:"var(--mut2)"}}>{preOrders.length>0?`Có ${preOrders.length} đơn đặt trước ở tab bên cạnh`:"Tạo đơn mới từ panel bên trái"}</div>
+          </div>
+        )}
+        </>}
+        {viewTab==="pre" && <>
         {/* v1.14: Đơn ĐẶT TRƯỚC — sắp theo giờ hẹn gần→xa, chỉ vào bếp khi xác nhận */}
+        {preOrders.length===0 && (
+          <div style={{textAlign:"center",padding:"60px 16px",color:"var(--mut2)"}}>
+            <i className="ti ti-calendar-off" style={{fontSize:54,display:"block",marginBottom:12,opacity:.6}}/>
+            <div style={{fontSize:13,fontWeight:500}}>Chưa có đơn đặt trước</div>
+            <div style={{fontSize:11,marginTop:4,color:"var(--mut2)"}}>Đơn có hẹn giờ sẽ xuất hiện ở đây</div>
+          </div>
+        )}
         {preOrders.length>0 && (
           <div style={{background:"linear-gradient(135deg,#FEFCE8,#FEF9C3)",border:"2px solid #EAB308",borderRadius:10,padding:10,marginBottom:10,boxShadow:"0 4px 14px rgba(234,179,8,.18)"}}>
             <div style={{display:"flex",alignItems:"center",gap:7,marginBottom:8}}>
@@ -2052,13 +2087,8 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
             </div>
           </div>
         )}
-        {active.length===0&&preOrders.length===0&&(
-          <div style={{textAlign:"center",padding:"60px 16px",color:"var(--mut2)"}}>
-            <i className="ti ti-mood-happy" style={{fontSize:54,display:"block",marginBottom:12,opacity:.6}}/>
-            <div style={{fontSize:13,fontWeight:500}}>Không có đơn nào đang xử lý</div>
-            <div style={{fontSize:11,marginTop:4,color:"var(--mut2)"}}>Tạo đơn mới từ panel bên trái</div>
-          </div>
-        )}
+        </>}
+        {viewTab==="active" && <>
         {active.length>0 && activeFiltered.length===0 && (
           <div style={{textAlign:"center",padding:"30px 16px",color:"var(--mut2)",fontSize:12}}>
             <i className="ti ti-filter-off" style={{fontSize:30,display:"block",marginBottom:8,opacity:.5}}/>
@@ -2128,6 +2158,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
             </div>
           );
         })}
+        </>}
       </div>
       {editOrder && (
         <EditOrderModal order={editOrder} products={products} categories={categories} zones={zones} pickupLocs={pickupLocs}

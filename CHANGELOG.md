@@ -6,6 +6,13 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.17.0] — 2026-06-05 (+07)
+
+### Changed
+- **Tách riêng đơn Đặt trước & đơn Đang xử lý ở màn Trực đơn:** trước đây 2 loại xếp chồng trong cùng một cột, khi đông đơn rất khó nhìn và dễ sót. Nay chia thành **2 tab riêng** ("Đang xử lý" / "Đặt trước") với badge đếm số đơn; tab Đặt trước nhấp nháy đỏ khi có đơn sắp tới giờ hẹn. Mỗi tab có empty-state riêng và gợi ý chuyển tab khi loại còn lại có đơn.
+
+---
+
 ## [1.16.2] — 2026-06-05 (+07)
 
 ### Added
