@@ -6,6 +6,39 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.11.0] — 2026-06-05 (+07)
+
+🔀 **Role theo ca · Điểm lấy hàng · Admin chạy như Thành viên**
+
+### ⚠️ CẦN CHẠY MIGRATION (để bật điểm lấy hàng)
+Vào **Supabase → SQL Editor**, chạy:
+```sql
+CREATE TABLE IF NOT EXISTS pickup_locations (
+  id BIGINT PRIMARY KEY, name TEXT NOT NULL, sort INT NOT NULL DEFAULT 0
+);
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_id BIGINT;
+ALTER TABLE pickup_locations ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "open_all" ON pickup_locations;
+CREATE POLICY "open_all" ON pickup_locations FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DO $$ BEGIN ALTER PUBLICATION supabase_realtime ADD TABLE pickup_locations; EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+```
+(Đã có sẵn trong `supabase-schema.sql`.) Chưa chạy → tính năng điểm lấy hàng tạm ẩn, app vẫn chạy bình thường.
+
+### Added
+- **Điểm lấy hàng (`pickup_locations`):** Admin quản lý danh sách trong **Cài đặt → Cài đặt chung**.
+  Khi tạo/sửa đơn có **dropdown chọn điểm lấy hàng**. Hiển thị trên card đơn, màn phân shipper,
+  và nổi bật trong app Shipper (kèm địa chỉ giao). Cờ `PICKUP_DB_OK`/`ORDER_PICKUP_OK` tự phát hiện migration.
+- **Admin chạy như Thành viên:** tài khoản admin mặc định vào chế độ **Admin**; bấm
+  **"Xem như Thành viên"** (sidebar) để chạy app theo role được phân trong ca. Thanh nổi **"Về chế độ Admin"**
+  để quay lại bất cứ lúc nào.
+
+### Changed
+- **Role tính 100% theo ca:** thành viên không còn dùng `staff.role` cố định lúc chạy — role lấy từ
+  **phân ca** (`shift_assignments`). Chưa tới ca / chưa được phân ⇒ màn **Nghỉ**. `staff.role` chỉ còn để
+  xác định **Admin** (giữ cột, không drop). Form Nhân sự ghi rõ "vai trò thực tế theo phân ca".
+
+---
+
 ## [1.10.2] — 2026-06-04 (+07)
 
 📲 **Telegram BOT_TOKEN lưu vào tài khoản Admin (sync mọi máy)**

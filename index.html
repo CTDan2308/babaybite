@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.10.2</title>
+<title>BaBayBite v1.11.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -144,10 +144,19 @@ let SCHED_DATE_OK = true;
 /* Big Update: cờ — DB đã có cột staff.tg_token chưa? (lưu BOT_TOKEN Telegram ở các acc admin để sync mọi máy)
    Chưa migrate → KHÔNG ghi tg_token (tránh 400). Token vẫn dùng được dạng localStorage từng máy. */
 let TG_DB_OK = false;
+/* v1.11: điểm lấy hàng (pickup_locations). 2 cờ phát hiện migration:
+   - PICKUP_DB_OK: đã có BẢNG pickup_locations chưa (để bật tab quản lý + dropdown)
+   - ORDER_PICKUP_OK: đã có CỘT orders.pickup_id chưa (để KHÔNG ghi cột này tránh 400 vỡ tạo đơn)
+   PICKUP_LOCS: cache danh sách điểm lấy hàng ở module-scope để các component sâu (shipper) hiển thị
+   tên điểm lấy mà không cần truyền prop xuyên nhiều tầng. App cập nhật biến này mỗi lần render. */
+let PICKUP_DB_OK = false;
+let ORDER_PICKUP_OK = false;
+let PICKUP_LOCS = [];
+const pickupName = id => { const p = PICKUP_LOCS.find(x=>x.id===id); return p ? p.name : ""; };
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
 const productToDb   = p => ({id:p.id,name:p.name,cat:p.cat,price:p.price,stock:p.stock,on_menu:p.on!==false,emoji:p.emoji,recipe:p.recipe});
-const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",createdAt:r.created_at||""});
-const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null, ...(SCHED_DATE_OK?{schedule_date:o.schD||null}:{})});
+const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",pickupId:(r.pickup_id??null),createdAt:r.created_at||""});
+const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null, ...(SCHED_DATE_OK?{schedule_date:o.schD||null}:{}), ...(ORDER_PICKUP_OK?{pickup_id:(o.pickupId??null)}:{})});
 const shiftFromDb   = r => ({name:r.name,start:r.start_at,end:r.end_at});
 const shiftToDb     = s => ({name:s.name,start_at:s.start,end_at:s.end});
 
@@ -250,7 +259,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.10.2";
+const VERSION = "1.11.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -269,11 +278,14 @@ const getCurrentShift = (shifts) => {
   }
   return null;
 };
-/* Role thực tế của user trong ca hiện tại */
-const getEffectiveRole = (currentShift, shiftAssignments, user) => {
+/* Role thực tế của user trong ca hiện tại.
+   v1.11: role KHÔNG còn cố định theo staff.role (trừ admin) — thành viên lấy role
+   100% từ shift_assignments; chưa tới ca / chưa được phân ⇒ "off" (màn Nghỉ).
+   adminAsMember=true ⇒ admin tạm chạy như thành viên (theo ca được phân, nếu có). */
+const getEffectiveRole = (currentShift, shiftAssignments, user, adminAsMember=false) => {
   if (!user) return null;
-  if (user.role === "admin") return "admin";
-  if (!currentShift) return user.role;
+  if (user.role === "admin" && !adminAsMember) return "admin";
+  if (!currentShift) return "off";
   const a = shiftAssignments.find(x => x.shift_id===currentShift.id && x.staff_id===user.id);
   return a ? a.role : "off";
 };
@@ -797,7 +809,7 @@ function HelpPopup(){
 /* ══════════════════════════════════════════════════════════
    SIDEBAR + TOPBAR
 ══════════════════════════════════════════════════════════ */
-function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,onLogout,currentUser,effectiveRole,onlineUsers=[]}){
+function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,onLogout,currentUser,effectiveRole,onlineUsers=[],onViewAsMember=null}){
   const pending  = orders.filter(o=>!["hoan_thanh","huy"].includes(o.st)).length;
   const inKitchen= orders.filter(o=>["moi","pha_che"].includes(o.st)).length;
   const inShip   = orders.filter(o=>o.type==="ship"&&["san_sang","dang_giao"].includes(o.st)).length;
@@ -879,7 +891,13 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
           );
         })}
       </nav>
-      <div style={{padding:"10px 12px",borderTop:"1px solid var(--bd2)"}}>
+      <div style={{padding:"10px 12px",borderTop:"1px solid var(--bd2)",display:"flex",flexDirection:"column",gap:8}}>
+        {onViewAsMember && (
+          <button onClick={onViewAsMember} title="Chạy app như một thành viên theo ca được phân"
+            style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",borderRadius:"var(--r-md)",border:"1px solid #C4B5FD",background:"#F5F3FF",color:"#6D28D9",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
+            <i className="ti ti-user-cog" style={{fontSize:15}}/>Xem như Thành viên
+          </button>
+        )}
         <button onClick={onLogout} className="btn-ghost" style={{width:"100%",display:"flex",alignItems:"center",justifyContent:"center",gap:8,padding:"10px",borderRadius:"var(--r-md)",color:"var(--err)",borderColor:"#FCA5A5",fontSize:12.5,fontWeight:600}}>
           <i className="ti ti-logout" style={{fontSize:15}}/>Đăng xuất
         </button>
@@ -1200,7 +1218,7 @@ function ConfirmDialog({title,message,detail,confirmLabel="Xác nhận",cancelLa
    Quyền: trưởng ca / trực đơn / admin. Hiển thị dạng pop-up.
    Tự đối soát kho theo chênh lệch số lượng khi lưu.
 ══════════════════════════════════════════════════════════ */
-function EditOrderModal({order,products,categories,zones,staff,currentUser,shiftAssignments=[],currentShift=null,onClose,onSave}){
+function EditOrderModal({order,products,categories,zones,pickupLocs=[],staff,currentUser,shiftAssignments=[],currentShift=null,onClose,onSave}){
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   // zone index khớp với phí ship hiện tại (đơn lưu dFee, không lưu index)
   const zoneIdx0 = order.type==="ship" ? Math.max(0, zones.findIndex(z=>z.fee===order.dFee)) : 0;
@@ -1211,6 +1229,7 @@ function EditOrderModal({order,products,categories,zones,staff,currentUser,shift
     // disc của đơn cũ lưu là SỐ TIỀN tuyệt đối → hiển thị/sửa dạng "đ" (fixed)
     dT:"fixed", disc:order.disc||0, note:order.note||"",
     items:(order.items||[]).map(i=>({...i})), schA:order.schA||"", schD:order.schD||"",
+    pickupId:(order.pickupId??null),
   }));
   const [cat,setCat]=useState(cats[0]?.key||"pha_che");
   const [search,setSrch]=useState("");
@@ -1248,6 +1267,7 @@ function EditOrderModal({order,products,categories,zones,staff,currentUser,shift
     const updated={...order, cus:d.cus.trim(), ph:d.ph, type:d.type,
       adr:d.type==="ship"?d.adr:"", items:d.items.map(i=>({...i})),
       pay:d.pay, dFee, disc:discAmt, dT:d.dT, kpi:d.kpi, note:d.note,
+      pickupId:(d.pickupId??null),
       // đổi sang "tại chỗ" → bỏ shipper + hẹn giao
       sid:d.type==="ship"?order.sid:null,
       schA:d.type==="ship"?(d.schA||""):"", schD:d.type==="ship"&&d.schA?(d.schD||todayISO()):""};
@@ -1293,6 +1313,16 @@ function EditOrderModal({order,products,categories,zones,staff,currentUser,shift
               ))}
             </div>
           </div>
+          {pickupLocs.length>0 && (
+            <div style={{marginBottom:9}}>
+              <div style={lbl}>🏭 Điểm lấy hàng</div>
+              <select value={d.pickupId??""} onChange={e=>setD(s=>({...s,pickupId:e.target.value?+e.target.value:null}))}
+                style={{...inp,cursor:"pointer",fontWeight:600}}>
+                <option value="">— Không chọn —</option>
+                {pickupLocs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
           {d.type==="ship" && (
             <div style={{marginBottom:9,paddingTop:8,borderTop:"1px dashed var(--bd)"}}>
               <div style={lbl}>📍 Địa chỉ giao</div>
@@ -1389,13 +1419,13 @@ function EditOrderModal({order,products,categories,zones,staff,currentUser,shift
   );
 }
 
-function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,effectiveRole,zones,categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
+function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,effectiveRole,zones,pickupLocs=[],categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
   const isAdmin = currentUser?.role === "admin";
   const erole = effectiveRole || currentUser?.role;
   const canEditOrder = ["truong_ca","truc_don","admin"].includes(erole);
   const [editId,setEditId] = useState(null);
   const [cancelId,setCancelId] = useState(null);
-  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:""};
+  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:"",pickupId:(pickupLocs[0]?.id??null)};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
   const [cart,setCart] = useState({...EC});
@@ -1430,7 +1460,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
     if(!cart.items.length){toast("Giỏ hàng đang trống","warn");return;}
     const num = (orders.length ? Math.max(...orders.map(o=>o.num||0)) : 0) + 1;
     const id  = `ĐH${String(num).padStart(3,"0")}`;
-    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:"moi",pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||"",schD:cart.schA?(cart.schD||todayISO()):""};
+    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:"moi",pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||"",schD:cart.schA?(cart.schD||todayISO()):"",pickupId:(cart.pickupId??null)};
     setProducts(ps=>ps.map(p=>{const ci=cart.items.find(i=>i.pid===p.id);return ci?{...p,stock:Math.max(0,p.stock-ci.qty)}:p;}));
     setOrders(os=>[...os,o]);
     setCart({...EC,kpi:currentUser.id});
@@ -1534,6 +1564,16 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
               ))}
             </div>
           </div>
+          {pickupLocs.length>0 && (
+            <div style={{marginTop:9}}>
+              <div style={lbl}>🏭 Điểm lấy hàng</div>
+              <select value={cart.pickupId??""} onChange={e=>setCart(c=>({...c,pickupId:e.target.value?+e.target.value:null}))}
+                style={{...inp,cursor:"pointer",fontWeight:600}}>
+                <option value="">— Không chọn —</option>
+                {pickupLocs.map(p=><option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </div>
+          )}
           {cart.type==="ship"&&(
             <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed var(--bd)"}}>
               <div style={lbl}>📍 Địa chỉ giao hàng</div>
@@ -1796,6 +1836,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
                   <strong style={{color:"var(--text)"}}>{o.cus}</strong>
                   {o.ph&&<span style={{color:"var(--mut)"}}> · {o.ph}</span>}
                   {o.adr&&<div style={{fontSize:11,color:"var(--mut)",marginTop:2}}><i className="ti ti-map-pin" style={{fontSize:11,marginRight:2}}/>{o.adr}</div>}
+                  {o.pickupId&&pickupName(o.pickupId)&&<div style={{fontSize:11,color:"#6D28D9",marginTop:2,fontWeight:600}}>🏭 Lấy tại: {pickupName(o.pickupId)}</div>}
                 </div>
                 {o.schA && <div style={{fontSize:11,color:"#1E40AF",background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:"var(--r-sm)",padding:"4px 9px",marginBottom:6,fontWeight:700,display:"inline-flex",alignItems:"center",gap:4}}>⏰ Hẹn giao: {schedLabel(o)}</div>}
                 <div style={{fontSize:11,color:"var(--mut)",marginBottom:o.note?6:8,lineHeight:1.55,background:"#FAFAFA",padding:"6px 9px",borderRadius:"var(--r-sm)"}}>{o.items.map(i=>`${i.name}×${i.qty}${i.note?` (${i.note})`:""}`).join(" · ")}</div>
@@ -1840,7 +1881,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
         })}
       </div>
       {editOrder && (
-        <EditOrderModal order={editOrder} products={products} categories={categories} zones={zones}
+        <EditOrderModal order={editOrder} products={products} categories={categories} zones={zones} pickupLocs={pickupLocs}
           staff={staff} currentUser={currentUser} shiftAssignments={shiftAssignments} currentShift={currentShift}
           onClose={()=>setEditId(null)} onSave={saveEdit}/>
       )}
@@ -2556,6 +2597,14 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
                   </div>
                 )}
 
+                {/* v1.11: Điểm lấy hàng */}
+                {current.pickupId && pickupName(current.pickupId) && (
+                  <div style={{padding:"12px 14px",borderBottom:"1px dashed var(--bd2)",background:"#F5F3FF"}}>
+                    <div style={{fontSize:11,color:"#6D28D9",fontWeight:600,textTransform:"uppercase",marginBottom:4}}>🏭 Điểm lấy hàng</div>
+                    <div style={{fontSize:15,fontWeight:700,color:"#5b21b6"}}>{pickupName(current.pickupId)}</div>
+                  </div>
+                )}
+
                 {/* Address block — tap to open Maps */}
                 <div style={{padding:"14px",borderBottom:"1px dashed var(--bd2)"}}>
                   <div style={{fontSize:11,color:"var(--mut)",fontWeight:600,textTransform:"uppercase",marginBottom:5}}>Địa chỉ giao</div>
@@ -2839,6 +2888,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
                     <div style={{display:"flex",alignItems:"center",gap:4,flex:1,minWidth:180}}>
                       <i className="ti ti-map-pin" style={{fontSize:13,color:"var(--or)"}}/>{o.adr||"—"}
                     </div>
+                    {o.pickupId && pickupName(o.pickupId) && <span style={{fontSize:11,padding:"3px 8px",background:"#F5F3FF",color:"#6D28D9",border:"1px solid #C4B5FD",borderRadius:"var(--r-pill)",fontWeight:700}}>🏭 {pickupName(o.pickupId)}</span>}
                     {o.schA && <span style={{fontSize:11,padding:"3px 8px",background:"#EFF6FF",color:"#1E40AF",border:"1px solid #93C5FD",borderRadius:"var(--r-pill)",fontWeight:700}}>⏰ {schedLabel(o)}</span>}
                   </div>
 
@@ -3436,7 +3486,7 @@ function TelegramSettings({staff,setStaff,toast}){
   );
 }
 
-function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,shift,setShift,categories,setCategories,shifts,setShifts,shiftAssignments,upsertAssignment,deleteAssignment,currentUser,toast}){
+function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,pickupLocs,setPickupLocs,shift,setShift,categories,setCategories,shifts,setShifts,shiftAssignments,upsertAssignment,deleteAssignment,currentUser,toast}){
   const [tab,setTab] = useState("staff");
   const [recipe,setRecipe] = useState(null);
 
@@ -3465,7 +3515,7 @@ function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,shif
       {tab==="cat"  &&<CategorySettings categories={categories} setCategories={setCategories} products={products} toast={toast}/>}
       {tab==="shift"&&<ShiftSettings shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} staff={staff} toast={toast}/>}
       {tab==="tg"   &&<TelegramSettings staff={staff} setStaff={setStaff} toast={toast}/>}
-      {tab==="gen"  &&<GeneralSettings zones={zones} setZones={setZones} shift={shift} setShift={setShift} staff={staff} products={products} toast={toast}/>}
+      {tab==="gen"  &&<GeneralSettings zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} staff={staff} products={products} toast={toast}/>}
 
       {recipe&&<RecipeModal product={recipe} onClose={()=>setRecipe(null)}
         onSave={updated=>setProducts(ps=>ps.map(p=>p.id===recipe.id?{...p,recipe:updated}:p))} toast={toast}/>}
@@ -4147,11 +4197,12 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
                 <input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g,"")}))} placeholder="vd: vana" style={{width:"100%",padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12,fontFamily:"monospace"}}/>
               </div>
               <div>
-                <div style={{fontSize:10,color:"#767676",marginBottom:3,fontWeight:600}}>Vai trò</div>
+                <div style={{fontSize:10,color:"#767676",marginBottom:3,fontWeight:600}}>Vai trò mặc định</div>
                 <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}
                   style={{width:"100%",padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12,background:"#fff",cursor:"pointer"}}>
                   {Object.entries(RL).filter(([k])=>k!=="off").map(([k,l])=><option key={k} value={k}>{l}</option>)}
                 </select>
+                <div style={{fontSize:9.5,color:"#999",marginTop:3,lineHeight:1.4}}>Vai trò thực tế tính <b>theo phân ca</b>. Chọn <b>Admin</b> để cấp toàn quyền.</div>
               </div>
               <div>
                 <div style={{fontSize:10,color:"#767676",marginBottom:3,fontWeight:600}}>PIN (4 số)</div>
@@ -4371,13 +4422,38 @@ function ProductSettings({products,setProducts,categories,setRecipe,toast}){
   );
 }
 
-function GeneralSettings({zones,setZones,shift,setShift,staff,products,toast}){
+function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setShift,staff,products,toast}){
   const updateZone=(i,k,v)=>setZones(zs=>zs.map((z,idx)=>idx===i?{...z,[k]:k==="fee"?+v:v}:z));
   const addZone=()=>setZones(zs=>[...zs,{lb:"Khu vực mới",fee:10000}]);
   const removeZone=i=>setZones(zs=>zs.filter((_,idx)=>idx!==i));
+  // v1.11: điểm lấy hàng
+  const updatePickup=(id,name)=>setPickupLocs(ps=>ps.map(p=>p.id===id?{...p,name}:p));
+  const addPickup=()=>setPickupLocs(ps=>[...ps,{name:"Điểm lấy mới"}]);
+  const removePickup=id=>setPickupLocs(ps=>ps.filter(p=>p.id!==id));
 
   return (
     <>
+      <div className="card" style={{padding:14,marginBottom:14}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>🏭 Điểm lấy hàng</div>
+          {setPickupLocs && PICKUP_DB_OK && <button onClick={addPickup} style={{fontSize:11,padding:"5px 10px",background:"#F5F3FF",border:"none",borderRadius:6,color:"#6D28D9",cursor:"pointer",fontWeight:700}}>+ Thêm điểm</button>}
+        </div>
+        <div style={{fontSize:11,color:"#767676",marginBottom:10,lineHeight:1.5}}>Các địa điểm shipper đến lấy hàng. Hiển thị dạng dropdown khi tạo/sửa đơn. Chỉ Admin chỉnh sửa.</div>
+        {!PICKUP_DB_OK && (
+          <div style={{fontSize:11.5,color:"#92400e",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:6,padding:"9px 12px",lineHeight:1.55}}>
+            ⚠ Chưa có bảng <code>pickup_locations</code> trong DB. Chạy migration trong <b>supabase-schema.sql</b> (Supabase → SQL Editor) rồi reload để bật tính năng này.
+          </div>
+        )}
+        {PICKUP_DB_OK && pickupLocs.length===0 && <div style={{fontSize:11.5,color:"#999",fontStyle:"italic"}}>Chưa có điểm lấy hàng nào — bấm "+ Thêm điểm".</div>}
+        {PICKUP_DB_OK && pickupLocs.map(p=>(
+          <div key={p.id} style={{display:"flex",gap:6,marginBottom:8,alignItems:"center"}}>
+            <span style={{fontSize:15}}>🏭</span>
+            <input value={p.name} onChange={e=>updatePickup(p.id,e.target.value)}
+              style={{flex:1,padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12}}/>
+            <button onClick={()=>removePickup(p.id)} style={{padding:"4px 8px",border:"1px solid #fca5a5",borderRadius:4,background:"#fff",color:"#b91c1c",cursor:"pointer",fontSize:11}}>✕</button>
+          </div>
+        ))}
+      </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14}}>
         <div className="card" style={{padding:14}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -4489,6 +4565,8 @@ function App(){
   const [products,_setProducts]= useState([]);
   const [staff,_setStaff]    = useState([]);
   const [zones,_setZones]    = useState([]);
+  const [pickupLocs,_setPickupLocs] = useState([]); // v1.11: điểm lấy hàng
+  const [adminMode,setAdminMode] = useState("admin"); // v1.11: admin xem như "admin" | "member"
   const [shift,_setShift]    = useState({name:"Ca sáng",start:"07:45",end:"12:00"});
   const [categories,_setCategories] = useState([]);
   const [shifts,_setShifts]  = useState([]);
@@ -4510,6 +4588,7 @@ function App(){
   const productsRef   = useRef([]);
   const staffRef      = useRef([]);
   const zonesRef      = useRef([]);
+  const pickupLocsRef = useRef([]);
   const shiftRef      = useRef(shift);
   const categoriesRef = useRef([]);
   const shiftsRef     = useRef([]);
@@ -4598,6 +4677,16 @@ function App(){
     _setZones(nextWithIds);
     syncToDb(prev, nextWithIds, "zones", "id", z=>z);
   },[]);
+  const setPickupLocs = useCallback(updater=>{
+    if (!PICKUP_DB_OK) { toast("⚠ Chưa có bảng pickup_locations — chạy migration (xem hướng dẫn) rồi reload.","warn"); return; }
+    const prev = pickupLocsRef.current;
+    const next = typeof updater==="function" ? updater(prev) : updater;
+    // Gán id + sort cho điểm mới
+    const nextWithIds = next.map((p,i)=>p.id?{...p,sort:i}:{...p,id:Math.max(0,...next.map(x=>x.id||0),...prev.map(x=>x.id||0))+1+i,sort:i});
+    pickupLocsRef.current = nextWithIds;
+    _setPickupLocs(nextWithIds);
+    syncToDb(prev, nextWithIds, "pickup_locations", "id", p=>p);
+  },[]);
   const setShift = useCallback(updater=>{
     const prev = shiftRef.current;
     const next = typeof updater==="function" ? updater(prev) : updater;
@@ -4649,7 +4738,7 @@ function App(){
   useEffect(()=>{
     (async()=>{
       try{
-        const [pR,sR,oR,zR,shR,cR,shsR,saR] = await Promise.all([
+        const [pR,sR,oR,zR,shR,cR,shsR,saR,plR] = await Promise.all([
           sb.from("products").select("*").order("id"),
           sb.from("staff").select("*").order("id"),
           sb.from("orders").select("*").order("num"),
@@ -4658,6 +4747,7 @@ function App(){
           sb.from("categories").select("*").order("sort"),
           sb.from("shifts").select("*").order("sort"),
           sb.from("shift_assignments").select("*"),
+          sb.from("pickup_locations").select("*").order("sort"), // v1.11 (bảng có thể chưa tồn tại → xử lý mềm)
         ]);
         if (pR.error||sR.error||oR.error||zR.error){
           toast("Lỗi tải dữ liệu. Kiểm tra Supabase / chạy schema.sql","error");
@@ -4680,14 +4770,26 @@ function App(){
           const adminTok = ss.filter(s=>s.role==="admin" && s.tg_token).sort((a,b)=>a.id-b.id)[0]?.tg_token;
           if (adminTok) { TG.setToken(adminTok); console.info("[BaBayBite] Đã nạp Telegram BOT_TOKEN từ tài khoản admin."); }
         }
+        // v1.11: phát hiện điểm lấy hàng — bảng pickup_locations + cột orders.pickup_id
+        PICKUP_DB_OK = !plR.error;
+        const pls = (PICKUP_DB_OK ? (plR.data||[]) : []);
+        if (oR.data && oR.data.length) {
+          ORDER_PICKUP_OK = Object.prototype.hasOwnProperty.call(oR.data[0], "pickup_id");
+        } else {
+          const probe = await sb.from("orders").select("pickup_id").limit(1);
+          ORDER_PICKUP_OK = !probe.error;
+        }
+        if (!PICKUP_DB_OK) console.warn("[BaBayBite] Bảng 'pickup_locations' chưa có — tính năng điểm lấy hàng tạm tắt. Chạy migration trong supabase-schema.sql rồi reload.");
+        else if (!ORDER_PICKUP_OK) console.warn("[BaBayBite] Cột 'orders.pickup_id' chưa có — đơn chưa lưu được điểm lấy hàng. Chạy ALTER TABLE rồi reload.");
+        PICKUP_LOCS = pls;
         const os = (oR.data||[]).map(orderFromDb);
         const zs = zR.data||[];
         const sh = shR.data ? shiftFromDb(shR.data) : {name:"Ca sáng",start:"07:45",end:"12:00"};
         const cs = cR.data || [];
         const shs = shsR.data || [];
         const sas = saR.data || [];
-        productsRef.current=ps; staffRef.current=ss; ordersRef.current=os; zonesRef.current=zs; shiftRef.current=sh; categoriesRef.current=cs; shiftsRef.current=shs;
-        _setProducts(ps); _setStaff(ss); _setOrders(os); _setZones(zs); _setShift(sh); _setCategories(cs); _setShifts(shs); _setShiftAssignments(sas);
+        productsRef.current=ps; staffRef.current=ss; ordersRef.current=os; zonesRef.current=zs; pickupLocsRef.current=pls; shiftRef.current=sh; categoriesRef.current=cs; shiftsRef.current=shs;
+        _setProducts(ps); _setStaff(ss); _setOrders(os); _setZones(zs); _setPickupLocs(pls); _setShift(sh); _setCategories(cs); _setShifts(shs); _setShiftAssignments(sas);
         // Auto-login bằng PIN đã lưu (nếu vẫn match)
         const savedPin = localStorage.getItem("clb_pin");
         if (savedPin){
@@ -4708,6 +4810,7 @@ function App(){
   const handleLogin = (u) => {
     localStorage.setItem("clb_pin", u.pin);
     setCurrentUser(u);
+    setAdminMode("admin"); // v1.11: admin luôn vào chế độ Admin trước
     toast(`👋 Xin chào ${u.name}`,"success");
     // Mặc định vào màn đầu tiên user được phép xem
     const allowed = ROLE_PERMS[u.role] || ["dashboard"];
@@ -4999,9 +5102,13 @@ function App(){
     try { new Notification("Thông báo đã bật",{body:"Bạn sẽ nhận thông báo cho các sự kiện liên quan",icon:"🛒"}); } catch(e){}
   },[notifEnabled,toast]);
 
+  // v1.11: đồng bộ cache điểm lấy hàng ra module-scope cho component sâu (shipper) hiển thị
+  PICKUP_LOCS = pickupLocs;
   // Tính ca hiện tại sớm để SCREENS dùng được (dù chưa có currentUser)
   const currentShift = getCurrentShift(shifts);
-  const effectiveRoleEarly = getEffectiveRole(currentShift, shiftAssignments, currentUser);
+  // v1.11: admin có thể tạm chạy như thành viên (adminMode==="member")
+  const adminAsMember = currentUser?.role==="admin" && adminMode==="member";
+  const effectiveRoleEarly = getEffectiveRole(currentShift, shiftAssignments, currentUser, adminAsMember);
   if (currentUser) { effectiveRoleRef.current = effectiveRoleEarly; currentUserRef.current = currentUser; }
   // v1.8: sync refs cho tgBroadcast
   currentShiftRef.current = currentShift;
@@ -5017,7 +5124,7 @@ function App(){
     dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
                comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder} viewDate={viewDate} setViewDate={setViewDate}/>},
     order:    {title:"Trực đơn",         sub:"Nhận & tạo đơn hàng · Tách KPI người sale",
-               comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
+               comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
     kitchen:  {title:"Pha chế (KDS)",    sub:"Kitchen Display System · Realtime",
                comp:<KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>},
     shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển",
@@ -5027,7 +5134,7 @@ function App(){
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
                comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate}/>},
     settings: {title:"Cài đặt",          sub:"Quản lý nhân sự, sản phẩm, danh mục, lịch ca",
-               comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast}/>},
+               comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast}/>},
   };
 
   if (loading) {
@@ -5064,9 +5171,21 @@ function App(){
     return <LoginScreen staff={staff} onLogin={handleLogin}/>;
   }
 
+  // v1.11: thanh nổi cho admin đang chạy ở chế độ Thành viên → bấm để về Admin
+  const adminMemberBar = adminAsMember ? (
+    <button onClick={()=>setAdminMode("admin")} title="Quay lại chế độ Admin"
+      style={{position:"fixed",bottom:16,right:16,zIndex:2000,padding:"10px 16px",borderRadius:"var(--r-pill)",border:"none",cursor:"pointer",
+        background:"linear-gradient(135deg,#7C3AED,#5b21b6)",color:"#fff",fontSize:12.5,fontWeight:800,boxShadow:"0 6px 20px rgba(124,58,237,.4)",display:"flex",alignItems:"center",gap:7}}>
+      <i className="ti ti-shield-lock" style={{fontSize:15}}/>Về chế độ Admin
+    </button>
+  ) : null;
+
   // Đang nghỉ → màn rest
   if (effectiveRole === "off") {
-    return <RestScreen user={currentUser} currentShift={currentShift} shifts={shifts} shiftAssignments={shiftAssignments} onLogout={handleLogout}/>;
+    return <>
+      <RestScreen user={currentUser} currentShift={currentShift} shifts={shifts} shiftAssignments={shiftAssignments} onLogout={handleLogout} adminAsMember={adminAsMember} onBackToAdmin={()=>setAdminMode("admin")}/>
+      {adminMemberBar}
+    </>;
   }
 
   // v1.5: Shipper có app standalone riêng (không sidebar/topbar admin)
@@ -5086,28 +5205,37 @@ function App(){
     const complete  = oid => setSt(oid,{st:"hoan_thanh"},`✓ Giao thành công ${oid}`);
     const cancelSh  = oid => { if(!confirm("Huỷ đơn này?")) return; restoreStockShipper(oid); setSt(oid,{st:"huy"},"Đã huỷ đơn · đã hoàn kho","warn"); };
     const doReturnSh= (oid,reason) => setSt(oid,{st:"hoan_hang",returnReason:reason},"↩️ Đã ghi nhận hoàn hàng","warn");
-    return <ShipperApp
-      orders={orders} currentUser={currentUser} staff={staff}
-      pickup={pickup} startShip={startShip} complete={complete}
-      cancel={cancelSh} doReturn={doReturnSh}
-      onLogout={handleLogout} toast={toast}
-      connStatus={connStatus} currentShift={currentShift} onlineUsers={onlineUsers}/>;
+    return <>
+      <ShipperApp
+        orders={orders} currentUser={currentUser} staff={staff}
+        pickup={pickup} startShip={startShip} complete={complete}
+        cancel={cancelSh} doReturn={doReturnSh}
+        onLogout={handleLogout} toast={toast}
+        connStatus={connStatus} currentShift={currentShift} onlineUsers={onlineUsers}/>
+      {adminMemberBar}
+    </>;
   }
 
   // v1.5: Pha chế có app riêng (KitchenScreen + shell tối giản)
   if (effectiveRole === "pha_che") {
-    return <RoleAppShell roleKey="pha_che" title="PHA CHẾ — KDS" icon="☕" bgColor="linear-gradient(135deg,#1E40AF,#1E3A8A)"
-      currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}>
-      <KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>
-    </RoleAppShell>;
+    return <>
+      <RoleAppShell roleKey="pha_che" title="PHA CHẾ — KDS" icon="☕" bgColor="linear-gradient(135deg,#1E40AF,#1E3A8A)"
+        currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}>
+        <KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>
+      </RoleAppShell>
+      {adminMemberBar}
+    </>;
   }
 
   // v1.5: Trực đơn có app riêng (OrderScreen + shell tối giản)
   if (effectiveRole === "truc_don") {
-    return <RoleAppShell roleKey="truc_don" title="TRỰC ĐƠN" icon="📋" bgColor="linear-gradient(135deg,#C73D22,#A12714)"
-      currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}>
-      <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} zones={zones} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift}/>
-    </RoleAppShell>;
+    return <>
+      <RoleAppShell roleKey="truc_don" title="TRỰC ĐƠN" icon="📋" bgColor="linear-gradient(135deg,#C73D22,#A12714)"
+        currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}>
+        <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift}/>
+      </RoleAppShell>
+      {adminMemberBar}
+    </>;
   }
 
   // Lọc màn theo role thực tế
@@ -5118,7 +5246,7 @@ function App(){
   return (
     <div className="app-shell" style={{fontFamily:"'Segoe UI',system-ui,-apple-system,sans-serif"}}>
       {sbOpen && <div className="sb-overlay" onClick={()=>setSbOpen(false)}/>}
-      <Sidebar screen={activeScreen} setScreen={(s)=>{setScreen(s);setSbOpen(false);}} orders={orders} currentShift={currentShift} allowed={allowed} sbOpen={sbOpen} onClose={()=>setSbOpen(false)} onLogout={handleLogout} currentUser={currentUser} effectiveRole={effectiveRole} onlineUsers={onlineUsers}/>
+      <Sidebar screen={activeScreen} setScreen={(s)=>{setScreen(s);setSbOpen(false);}} orders={orders} currentShift={currentShift} allowed={allowed} sbOpen={sbOpen} onClose={()=>setSbOpen(false)} onLogout={handleLogout} currentUser={currentUser} effectiveRole={effectiveRole} onlineUsers={onlineUsers} onViewAsMember={currentUser.role==="admin"?()=>{setAdminMode("member");setSbOpen(false);}:null}/>
       <div className="app-main">
         <TopBar title={cur.title} sub={cur.sub} time={time} currentUser={currentUser} connStatus={connStatus} onLogout={handleLogout} onMenu={()=>setSbOpen(true)} effectiveRole={effectiveRole} currentShift={currentShift} notifEnabled={notifEnabled} onToggleNotif={toggleNotif}/>
         <div style={{flex:1,overflow:"hidden",display:"flex",minHeight:0}}>{cur.comp}</div>

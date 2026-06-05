@@ -70,10 +70,20 @@ ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_at TEXT;
 -- v1.9.5: hẹn NGÀY giao (YYYY-MM-DD text — null = hôm nay). Dùng kèm schedule_at để nhắc làm đơn trước giờ giao.
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_date TEXT;
 
+-- v1.11: điểm lấy hàng của đơn (FK pickup_locations.id — null = không chọn)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS pickup_id BIGINT;
+
 CREATE TABLE IF NOT EXISTS zones (
   id         BIGINT PRIMARY KEY,
   lb         TEXT NOT NULL,
   fee        INT NOT NULL DEFAULT 0,
+  sort       INT NOT NULL DEFAULT 0
+);
+
+-- v1.11: điểm lấy hàng (shipper đến lấy). Admin quản lý trong Cài đặt → Cài đặt chung.
+CREATE TABLE IF NOT EXISTS pickup_locations (
+  id         BIGINT PRIMARY KEY,
+  name       TEXT NOT NULL,
   sort       INT NOT NULL DEFAULT 0
 );
 
@@ -120,6 +130,7 @@ ALTER TABLE shift             ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shift_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE pickup_locations  ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "open_all" ON products;
 DROP POLICY IF EXISTS "open_all" ON staff;
@@ -129,6 +140,7 @@ DROP POLICY IF EXISTS "open_all" ON shift;
 DROP POLICY IF EXISTS "open_all" ON categories;
 DROP POLICY IF EXISTS "open_all" ON shifts;
 DROP POLICY IF EXISTS "open_all" ON shift_assignments;
+DROP POLICY IF EXISTS "open_all" ON pickup_locations;
 
 CREATE POLICY "open_all" ON products          FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON staff             FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
@@ -138,6 +150,7 @@ CREATE POLICY "open_all" ON shift             FOR ALL TO anon, authenticated USI
 CREATE POLICY "open_all" ON categories        FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON shifts            FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON shift_assignments FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "open_all" ON pickup_locations  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- ═══════════════════════════════════════
 -- 3. REALTIME (cho phép subscribe thay đổi)
@@ -166,6 +179,9 @@ DO $$ BEGIN
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 DO $$ BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE shift_assignments;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+DO $$ BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE pickup_locations;
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
 -- v1.4: REPLICA IDENTITY FULL — cần để realtime UPDATE/DELETE gửi đầy đủ row cũ.
