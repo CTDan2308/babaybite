@@ -6,6 +6,19 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.16.0] — 2026-06-05 (+07)
+
+📊 **Chuyển KPI/chi phí Shipper sang Báo cáo**
+
+### Changed
+- **Bảng KPI & Chi phí Shipper (cả đợt)** chuyển từ màn **Giao hàng** → **Báo cáo**. Màn Giao hàng giờ
+  gọn, chỉ tập trung điều phối/phân công. Báo cáo có thêm: tổng chi phí ship, per-shipper (số đơn / phí ship /
+  thưởng / giải ngân) + dòng TỔNG + nút **Xuất CSV bảng lương**. Dữ liệu tính **cả đợt** (mọi ngày), không phụ
+  thuộc ngày đang xem.
+- Giữ nguyên tab **"KPI / Lương"** cá nhân trong app Shipper (shipper xem thu nhập của mình trên điện thoại).
+
+---
+
 ## [1.15.0] — 2026-06-05 (+07)
 
 🛵 **KPI Shipper · QR thu tiền · Âm thanh báo đơn · Tối ưu UI Trực đơn**

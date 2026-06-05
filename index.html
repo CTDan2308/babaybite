@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.15.0</title>
+<title>BaBayBite v1.16.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -286,7 +286,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.15.0";
+const VERSION = "1.16.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -3159,15 +3159,6 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
     {l:"Hoàn hàng",   v:returned.length,ic:"ti-arrow-back",  bg:"#fce7f3",tc:"#9d174d"},
   ];
 
-  // v1.15: bảng lương shipper CẢ ĐỢT — tổng phí ship đơn đã giao + thưởng/đơn
-  const bonusRate = appConfig?.shipBonus || 0;
-  const payrollMap = {};
-  finished.forEach(o=>{ if(o.sid==null) return; const m=payrollMap[o.sid]=payrollMap[o.sid]||{count:0,fee:0}; m.count++; m.fee+=o.dFee||0; });
-  const payroll = Object.entries(payrollMap)
-    .map(([sid,m])=>({sid:+sid,name:staff.find(s=>s.id===+sid)?.name||"—",count:m.count,fee:m.fee,bonus:m.count*bonusRate,total:m.fee+m.count*bonusRate}))
-    .sort((a,b)=>b.total-a.total);
-  const payrollTotal = payroll.reduce((s,p)=>s+p.total,0);
-
   // v1.9.1: cần điều phối = ship đang chuẩn bị (pha_che) + sẵn sàng (san_sang)
   const needCoord = ship.filter(o=>["pha_che","san_sang"].includes(o.st)).sort((a,b)=>{
     // Đã có sid xuống cuối (vì đã chốt rồi), san_sang lên trước pha_che
@@ -3188,56 +3179,6 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
-
-      {/* v1.15: BẢNG LƯƠNG SHIPPER CẢ ĐỢT — KPI giải ngân cuối đợt */}
-      {canAssign && (
-        <div style={{background:"#fff",border:"1px solid var(--bd)",borderRadius:12,padding:14,marginBottom:14,boxShadow:"var(--sh-sm)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
-            <span style={{fontSize:18}}>💰</span>
-            <div style={{flex:1,minWidth:140}}>
-              <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Lương Shipper (cả đợt)</div>
-              <div style={{fontSize:10.5,color:"var(--mut)"}}>Tổng phí ship đã giao{bonusRate>0?` + thưởng ${fmt(bonusRate)}/đơn`:""} · giải ngân cuối đợt</div>
-            </div>
-            <div style={{textAlign:"right"}}>
-              <div style={{fontSize:10,color:"var(--mut)"}}>Tổng giải ngân</div>
-              <div style={{fontSize:18,fontWeight:800,color:"var(--or)"}}>{fmt(payrollTotal)}</div>
-            </div>
-          </div>
-          {payroll.length===0 ? (
-            <div style={{textAlign:"center",padding:"12px 0",color:"var(--mut)",fontSize:11.5}}>Chưa có đơn ship nào giao thành công.</div>
-          ) : (
-            <div style={{overflowX:"auto"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-                <thead>
-                  <tr style={{color:"var(--mut)",fontSize:10.5,textTransform:"uppercase"}}>
-                    <th style={{textAlign:"left",padding:"6px 8px",fontWeight:700}}>Shipper</th>
-                    <th style={{textAlign:"center",padding:"6px 8px",fontWeight:700}}>Đơn</th>
-                    <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Phí ship</th>
-                    {bonusRate>0 && <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Thưởng</th>}
-                    <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Giải ngân</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {payroll.map(p=>(
-                    <tr key={p.sid} style={{borderTop:"1px solid var(--bd2)"}}>
-                      <td style={{padding:"8px",fontWeight:700,color:"var(--text)"}}>
-                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
-                          <span style={{width:22,height:22,borderRadius:"50%",background:"#ede9fe",color:"#5b21b6",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(p.name)}</span>
-                          {p.name}
-                        </span>
-                      </td>
-                      <td style={{textAlign:"center",padding:"8px",fontWeight:700,color:"var(--text2)"}}>{p.count}</td>
-                      <td style={{textAlign:"right",padding:"8px",color:"var(--text2)"}}>{fmt(p.fee)}</td>
-                      {bonusRate>0 && <td style={{textAlign:"right",padding:"8px",color:"#5b21b6"}}>{fmt(p.bonus)}</td>}
-                      <td style={{textAlign:"right",padding:"8px",fontWeight:800,color:"var(--or)"}}>{fmt(p.total)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
 
       {/* v1.9.3: PHÂN CÔNG SHIPPER — LUÔN render, đầu trang — flow Chọn → Chốt → Ping */}
       {canAssign && (
@@ -3625,9 +3566,33 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
 /* ══════════════════════════════════════════════════════════
    REPORT SCREEN
 ══════════════════════════════════════════════════════════ */
-function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setViewDate,shiftAssignments=[],currentShift=null}){
+function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setViewDate,shiftAssignments=[],currentShift=null,appConfig={}}){
   // v1.9.5: BÁO CÁO THEO NGÀY — trước đây cộng dồn toàn thời gian dù ghi "cuối ca/hôm nay"
   const orders  = allOrders.filter(o=>orderDay(o)===viewDate);
+
+  // v1.16: KPI / chi phí Shipper — CẢ ĐỢT (toàn bộ ngày, phục vụ giải ngân cuối đợt)
+  const bonusRate = appConfig?.shipBonus || 0;
+  const payrollMap = {};
+  allOrders.filter(o=>o.type==="ship"&&o.st==="hoan_thanh").forEach(o=>{
+    if(o.sid==null) return;
+    const m=payrollMap[o.sid]=payrollMap[o.sid]||{count:0,fee:0};
+    m.count++; m.fee+=o.dFee||0;
+  });
+  const payroll = Object.entries(payrollMap)
+    .map(([sid,m])=>({sid:+sid,name:staff.find(s=>s.id===+sid)?.name||"—",count:m.count,fee:m.fee,bonus:m.count*bonusRate,total:m.fee+m.count*bonusRate}))
+    .sort((a,b)=>b.total-a.total);
+  const payrollTotal = payroll.reduce((s,p)=>s+p.total,0);
+  const payrollOrders = payroll.reduce((s,p)=>s+p.count,0);
+  const exportPayrollCSV=()=>{
+    const rows=[["Shipper","Số đơn giao","Tổng phí ship","Thưởng","Giải ngân"]];
+    payroll.forEach(p=>rows.push([p.name,p.count,p.fee,p.bonus,p.total]));
+    rows.push(["TỔNG",payrollOrders,payroll.reduce((s,p)=>s+p.fee,0),payroll.reduce((s,p)=>s+p.bonus,0),payrollTotal]);
+    const esc=c=>{ let s=String(c==null?"":c); if(/^[=+\-@]/.test(s)) s="'"+s; return '"'+s.replace(/"/g,'""')+'"'; };
+    const csv="﻿"+rows.map(r=>r.map(esc).join(",")).join("\n");
+    const a=Object.assign(document.createElement("a"),{href:URL.createObjectURL(new Blob([csv],{type:"text/csv;charset=utf-8"})),download:`LuongShipper_caDot.csv`});
+    a.click(); URL.revokeObjectURL(a.href);
+    toast("✅ Xuất bảng lương shipper thành công","success");
+  };
   const done    = orders.filter(o=>o.st==="hoan_thanh");
   const rev     = done.reduce((s,o)=>s+iTot(o),0);
   const cashRev = done.filter(o=>o.pay==="cash").reduce((s,o)=>s+iTot(o),0);
@@ -3724,6 +3689,67 @@ function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setV
             ))}
           </div>
         </div>
+      </div>
+
+      {/* v1.16: KPI / CHI PHÍ SHIPPER — CẢ ĐỢT (giải ngân cuối đợt) */}
+      <div className="card" style={{padding:14,marginTop:14}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:18}}>🛵</span>
+          <div style={{flex:1,minWidth:160}}>
+            <div style={{fontSize:14,fontWeight:800,color:"#212121"}}>KPI & Chi phí Shipper <span style={{fontSize:10,fontWeight:700,color:"#fff",background:"var(--or)",padding:"1px 7px",borderRadius:"var(--r-pill)",marginLeft:4}}>CẢ ĐỢT</span></div>
+            <div style={{fontSize:10.5,color:"#767676"}}>Tổng phí ship đơn đã giao{bonusRate>0?` + thưởng ${fmt(bonusRate)}/đơn`:""} · dùng để giải ngân cuối đợt</div>
+          </div>
+          <div style={{textAlign:"right"}}>
+            <div style={{fontSize:10,color:"#767676"}}>Tổng chi phí ship</div>
+            <div style={{fontSize:18,fontWeight:800,color:"var(--or)"}}>{fmt(payrollTotal)}</div>
+            <div style={{fontSize:9.5,color:"#999"}}>{payrollOrders} đơn · {payroll.length} shipper</div>
+          </div>
+          {payroll.length>0 && (
+            <button onClick={exportPayrollCSV} className="btn-ghost" style={{fontSize:11,padding:"7px 12px",borderRadius:8,fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+              <i className="ti ti-download" style={{fontSize:13}}/>CSV
+            </button>
+          )}
+        </div>
+        {payroll.length===0 ? (
+          <div style={{textAlign:"center",padding:"16px 0",color:"#999",fontSize:11.5}}>Chưa có đơn ship nào giao thành công trong cả đợt.</div>
+        ) : (
+          <div style={{overflowX:"auto"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{color:"#767676",fontSize:10.5,textTransform:"uppercase"}}>
+                  <th style={{textAlign:"left",padding:"6px 8px",fontWeight:700}}>Shipper</th>
+                  <th style={{textAlign:"center",padding:"6px 8px",fontWeight:700}}>Đơn</th>
+                  <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Phí ship</th>
+                  {bonusRate>0 && <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Thưởng</th>}
+                  <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Giải ngân</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payroll.map(p=>(
+                  <tr key={p.sid} style={{borderTop:"1px solid var(--bd2)"}}>
+                    <td style={{padding:"8px",fontWeight:700,color:"#212121"}}>
+                      <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                        <span style={{width:22,height:22,borderRadius:"50%",background:"#ede9fe",color:"#5b21b6",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(p.name)}</span>
+                        {p.name}
+                      </span>
+                    </td>
+                    <td style={{textAlign:"center",padding:"8px",fontWeight:700,color:"#555"}}>{p.count}</td>
+                    <td style={{textAlign:"right",padding:"8px",color:"#555"}}>{fmt(p.fee)}</td>
+                    {bonusRate>0 && <td style={{textAlign:"right",padding:"8px",color:"#5b21b6"}}>{fmt(p.bonus)}</td>}
+                    <td style={{textAlign:"right",padding:"8px",fontWeight:800,color:"var(--or)"}}>{fmt(p.total)}</td>
+                  </tr>
+                ))}
+                <tr style={{borderTop:"2px solid var(--bd)",background:"#FAFAFA"}}>
+                  <td style={{padding:"8px",fontWeight:800,color:"#212121"}}>TỔNG</td>
+                  <td style={{textAlign:"center",padding:"8px",fontWeight:800,color:"#212121"}}>{payrollOrders}</td>
+                  <td style={{textAlign:"right",padding:"8px",fontWeight:800,color:"#212121"}}>{fmt(payroll.reduce((s,p)=>s+p.fee,0))}</td>
+                  {bonusRate>0 && <td style={{textAlign:"right",padding:"8px",fontWeight:800,color:"#5b21b6"}}>{fmt(payroll.reduce((s,p)=>s+p.bonus,0))}</td>}
+                  <td style={{textAlign:"right",padding:"8px",fontWeight:800,color:"var(--or)"}}>{fmt(payrollTotal)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -5643,7 +5669,7 @@ function App(){
     staff:    {title:"Nhân sự & KPI",    sub:"Phân công · Theo dõi KPI · Bảng xếp hạng",
                comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments} viewDate={viewDate} setViewDate={setViewDate}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
-               comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate} shiftAssignments={shiftAssignments} currentShift={currentShift}/>},
+               comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>},
     settings: {title:"Cài đặt",          sub:"Quản lý nhân sự, sản phẩm, danh mục, lịch ca",
                comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast} appConfig={appConfig} setAppConfig={setAppConfig}/>},
   };
