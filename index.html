@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.14.0</title>
+<title>BaBayBite v1.15.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -77,10 +77,14 @@ button:not(:disabled):active{transform:translateY(1px)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 @keyframes pop{0%{transform:scale(.9)}60%{transform:scale(1.04)}100%{transform:scale(1)}}
+@keyframes notifFlash{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
+@keyframes notifCard{0%{transform:translateY(-18px) scale(.96);opacity:0}55%{transform:translateY(0) scale(1.02);opacity:1}100%{transform:translateY(0) scale(1)}}
+@keyframes ringPulse{0%{box-shadow:0 0 0 0 rgba(238,77,45,.5)}70%{box-shadow:0 0 0 14px rgba(238,77,45,0)}100%{box-shadow:0 0 0 0 rgba(238,77,45,0)}}
 .fade-up{animation:fadeUp .25s var(--ease)}
 .fade-in{animation:fadeIn .2s var(--ease)}
 .shake{animation:shake .35s var(--ease)}
 .pop{animation:pop .25s var(--ease)}
+.ring-pulse{animation:ringPulse 1.4s infinite}
 
 /* Text utils */
 .clamp-2{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
@@ -158,6 +162,7 @@ let ADMIN_COL_OK = false;
    tên điểm lấy mà không cần truyền prop xuyên nhiều tầng. App cập nhật biến này mỗi lần render. */
 let PICKUP_DB_OK = false;
 let ORDER_PICKUP_OK = false;
+let CONFIG_DB_OK = false; // v1.15: đã có bảng app_config chưa
 let PICKUP_LOCS = [];
 const pickupName = id => { const p = PICKUP_LOCS.find(x=>x.id===id); return p ? p.name : ""; };
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
@@ -281,7 +286,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.14.0";
+const VERSION = "1.15.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -378,6 +383,54 @@ function Time24({value,onChange,minuteStep=1,style}){
     </div>
   );
 }
+
+/* Âm thanh thông báo — WebAudio, không cần file asset (giữ single-file) */
+let _audioCtx = null;
+const playBeep = (kind="new") => {
+  try {
+    _audioCtx = _audioCtx || new (window.AudioContext||window.webkitAudioContext)();
+    const ctx = _audioCtx;
+    if (ctx.state==="suspended") ctx.resume();
+    const seq = kind==="ship" ? [[880,0],[1320,.13]] : [[660,0],[990,.12],[1320,.24]]; // shipper 2 nốt, mới 3 nốt
+    seq.forEach(([f,t])=>{
+      const o=ctx.createOscillator(), g=ctx.createGain();
+      o.type="sine"; o.frequency.value=f;
+      o.connect(g); g.connect(ctx.destination);
+      const t0=ctx.currentTime+t;
+      g.gain.setValueAtTime(0.0001,t0);
+      g.gain.exponentialRampToValueAtTime(0.32,t0+.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+.16);
+      o.start(t0); o.stop(t0+.18);
+    });
+  } catch(e){}
+};
+/* Overlay hiệu ứng động khi có đơn mới — render cố định, tự ẩn */
+function NotifFlash({event}){
+  if(!event) return null;
+  const ship = event.kind==="ship";
+  const c1 = ship ? "#7C3AED" : "var(--or)";
+  return (
+    <div key={event.id} style={{position:"fixed",inset:0,zIndex:9000,pointerEvents:"none",display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
+      <div style={{position:"absolute",inset:0,background:`radial-gradient(circle at 50% 0%, ${ship?"rgba(124,58,237,.22)":"rgba(238,77,45,.22)"}, transparent 60%)`,animation:"notifFlash 1.6s ease-out forwards"}}/>
+      <div style={{marginTop:"14vh",background:"#fff",border:`2px solid ${c1}`,borderRadius:16,padding:"16px 22px",boxShadow:"0 18px 50px rgba(0,0,0,.28)",display:"flex",alignItems:"center",gap:14,animation:"notifCard 2.6s ease forwards"}}>
+        <div style={{width:52,height:52,borderRadius:14,background:ship?"#EDE9FE":"var(--orl)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>{ship?"🛵":"🔔"}</div>
+        <div>
+          <div style={{fontSize:16,fontWeight:800,color:c1}}>{event.title}</div>
+          {event.body && <div style={{fontSize:12.5,color:"var(--text2)",marginTop:2,fontWeight:600}}>{event.body}</div>}
+        </div>
+      </div>
+    </div>
+  );
+}
+/* Sinh URL VietQR động (img.vietqr.io) — cfg={bank,acc,name} */
+const vietqrUrl = (cfg, amount, info) => {
+  if(!cfg || !cfg.bank || !cfg.acc) return "";
+  const p = new URLSearchParams();
+  if(amount>0) p.set("amount", String(Math.round(amount)));
+  if(info) p.set("addInfo", info);
+  if(cfg.name) p.set("accountName", cfg.name);
+  return `https://img.vietqr.io/image/${encodeURIComponent(cfg.bank)}-${encodeURIComponent(cfg.acc)}-compact2.png?${p.toString()}`;
+};
 
 const LS = {
   get:(k,fb)=>{try{const v=localStorage.getItem("clb_"+k);return v?JSON.parse(v):fb;}catch(e){return fb;}},
@@ -951,7 +1004,7 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
   );
 }
 
-function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effectiveRole,currentShift,notifEnabled,onToggleNotif}){
+function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effectiveRole,currentShift,notifEnabled,onToggleNotif,soundEnabled,onToggleSound}){
   const er = effectiveRole || "off";
   const [tc,bg] = RC[er]||["#475569","#f5f5f5"];
   const conn = {
@@ -981,6 +1034,10 @@ function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effective
           <div style={{width:7,height:7,borderRadius:"50%",background:conn.color,animation:conn.pulse?"pulse 2s infinite":"none",boxShadow:`0 0 0 3px ${conn.color}25`}}/>
           <span className="hide-mobile" style={{fontSize:10.5,color:conn.color,fontWeight:700}}>{conn.text}</span>
         </div>
+        <button onClick={onToggleSound} title={soundEnabled?"Tắt âm thanh báo đơn":"Bật âm thanh báo đơn"} aria-label="Âm thanh"
+          style={{width:36,height:36,borderRadius:"50%",border:`1px solid ${soundEnabled?"var(--or)":"var(--bd)"}`,background:soundEnabled?"var(--orl)":"#fff",color:soundEnabled?"var(--or)":"var(--mut2)",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:soundEnabled?"var(--sh-sm)":"none"}}>
+          <i className={`ti ${soundEnabled?"ti-volume":"ti-volume-off"}`}/>
+        </button>
         <button onClick={onToggleNotif} title={notifEnabled?"Tắt thông báo":"Bật thông báo"} aria-label="Thông báo"
           style={{width:36,height:36,borderRadius:"50%",border:`1px solid ${notifEnabled?"var(--or)":"var(--bd)"}`,background:notifEnabled?"var(--orl)":"#fff",color:notifEnabled?"var(--or)":"var(--mut2)",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",boxShadow:notifEnabled?"var(--sh-sm)":"none"}}>
           <i className={`ti ${notifEnabled?"ti-bell-ringing":"ti-bell-off"}`}/>
@@ -1503,6 +1560,8 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
   const canEditOrder = ["truong_ca","truc_don","admin"].includes(erole);
   const [editId,setEditId] = useState(null);
   const [cancelId,setCancelId] = useState(null);
+  const [q,setQ] = useState("");            // v1.15: tìm đơn đang xử lý
+  const [stFilter,setStFilter] = useState("all"); // v1.15: lọc theo trạng thái
   const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:"",pickupId:(pickupLocs[0]?.id??null)};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
@@ -1596,6 +1655,14 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
     setOrders(os=>os.map(x=>x.id===oid?{...x,st:"moi"}:x));
     toast(`▶ Đơn ${oid} đã đưa vào pha`,"success");
   };
+  // v1.15: lọc + tìm kiếm đơn đang xử lý (giảm sót đơn khi số lượng lớn)
+  const ACTIVE_ST = ["moi","pha_che","san_sang","da_lay","dang_giao"];
+  const qn = q.trim().toLowerCase();
+  const activeFiltered = active.filter(o=>{
+    if (stFilter!=="all" && o.st!==stFilter) return false;
+    if (!qn) return true;
+    return (o.id||"").toLowerCase().includes(qn) || (o.cus||"").toLowerCase().includes(qn) || (o.ph||"").toLowerCase().includes(qn);
+  });
 
   // Duyệt đơn khách: trừ kho + gán KPI + chuyển sang 'moi'
   const approveCustomer = (oid) => {
@@ -1867,6 +1934,32 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
           </div>
         </div>
 
+        {/* v1.15: tìm + lọc nhanh để không sót đơn khi số lượng lớn */}
+        {active.length>0 && (
+          <div style={{marginBottom:10,display:"flex",flexDirection:"column",gap:7}}>
+            <div style={{position:"relative"}}>
+              <i className="ti ti-search" style={{position:"absolute",left:9,top:"50%",transform:"translateY(-50%)",color:"var(--mut2)",fontSize:13,pointerEvents:"none"}}/>
+              <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Tìm mã đơn / khách / SĐT..."
+                style={{width:"100%",padding:"8px 28px 8px 28px",border:"1px solid var(--bd)",borderRadius:"var(--r-pill)",fontSize:12,background:"#fff"}}/>
+              {q && <button onClick={()=>setQ("")} style={{position:"absolute",right:7,top:"50%",transform:"translateY(-50%)",background:"#f0f0f0",border:"none",width:18,height:18,borderRadius:"50%",cursor:"pointer",color:"var(--mut)",fontSize:10}}>✕</button>}
+            </div>
+            <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:2}}>
+              {[{k:"all",l:"Tất cả",n:active.length},...ACTIVE_ST.map(s=>({k:s,l:ST[s]?.label||s,n:active.filter(o=>o.st===s).length}))]
+                .filter(x=>x.k==="all"||x.n>0)
+                .map(x=>{
+                  const on=stFilter===x.k; const col=x.k==="all"?"var(--or)":(ST[x.k]?.color||"var(--or)");
+                  return (
+                    <button key={x.k} onClick={()=>setStFilter(x.k)}
+                      style={{flexShrink:0,fontSize:10.5,padding:"4px 10px",borderRadius:"var(--r-pill)",cursor:"pointer",fontWeight:700,whiteSpace:"nowrap",
+                        border:`1.5px solid ${on?col:"var(--bd)"}`,background:on?col:"#fff",color:on?"#fff":"var(--text2)"}}>
+                      {x.l} <span style={{opacity:.85}}>{x.n}</span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        )}
+
         {/* v1.5: Đơn khách tự đặt chờ duyệt — hiển thị nổi bật trên cùng */}
         {pendingApproval.length>0 && (
           <div style={{background:"linear-gradient(135deg,#FFFBEB,#FEF3C7)",border:"2px solid #F59E0B",borderRadius:10,padding:10,marginBottom:10,boxShadow:"0 4px 14px rgba(245,158,11,.18)"}}>
@@ -1963,7 +2056,14 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
             <div style={{fontSize:11,marginTop:4,color:"var(--mut2)"}}>Tạo đơn mới từ panel bên trái</div>
           </div>
         )}
-        {[...active].reverse().map(o=>{
+        {active.length>0 && activeFiltered.length===0 && (
+          <div style={{textAlign:"center",padding:"30px 16px",color:"var(--mut2)",fontSize:12}}>
+            <i className="ti ti-filter-off" style={{fontSize:30,display:"block",marginBottom:8,opacity:.5}}/>
+            Không có đơn khớp bộ lọc{qn?` "${q}"`:""}.
+            <div><button onClick={()=>{setQ("");setStFilter("all");}} style={{marginTop:8,fontSize:11,color:"var(--or)",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>Xoá bộ lọc</button></div>
+          </div>
+        )}
+        {[...activeFiltered].reverse().map(o=>{
           const byUser=staff.find(s=>s.id===o.by);
           const kpiUser=staff.find(s=>s.id===o.kpi);
           const splitKpi=o.by!==o.kpi;
@@ -2489,6 +2589,52 @@ function KitchenScreen({orders,setOrders,products,setProducts,staff=[],toast}){
    SHIPPER SCREEN
 ══════════════════════════════════════════════════════════ */
 /* Modal nhập lý do hoàn hàng */
+/* v1.15: Modal QR thu tiền (VietQR động) — dùng ở ShipperApp & ShipperScreen */
+function QrPayModal({order,appConfig={},onClose,toast}){
+  const baseAmt = (order.items||[]).reduce((s,i)=>s+i.qty*i.p,0) - (order.disc||0) + (order.dFee||0);
+  const [amt,setAmt] = useState(baseAmt);
+  const configured = !!(appConfig.bank && appConfig.acc);
+  const info = `${order.id} ${order.cus||""}`.slice(0,25);
+  const url = configured ? vietqrUrl(appConfig, amt, info) : "";
+  return (
+    <div onClick={e=>e.target===e.currentTarget&&onClose()}
+      style={{position:"fixed",inset:0,background:"rgba(0,0,0,.6)",zIndex:1200,display:"flex",alignItems:"center",justifyContent:"center",padding:18,animation:"fadeIn .15s"}}>
+      <div style={{background:"#fff",borderRadius:16,width:"100%",maxWidth:360,padding:20,animation:"fadeUp .2s ease",textAlign:"center"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+          <div style={{fontSize:15,fontWeight:800,color:"var(--text)"}}>📲 QR thu tiền · {order.id}</div>
+          <button onClick={onClose} style={{background:"#f0f0f0",border:"none",width:28,height:28,borderRadius:"50%",cursor:"pointer",fontSize:14,color:"var(--mut)"}}>✕</button>
+        </div>
+        {!configured ? (
+          <div style={{padding:"24px 12px",color:"var(--err)",fontSize:12.5,fontWeight:600,lineHeight:1.6}}>
+            <div style={{fontSize:30,marginBottom:8}}>⚠️</div>
+            Chưa cấu hình tài khoản nhận tiền.<br/>Vào <b>Cài đặt → Tổng quan → Tài khoản nhận tiền (VietQR)</b> để nhập ngân hàng + số tài khoản.
+          </div>
+        ) : (
+          <>
+            <div style={{fontSize:11,color:"var(--mut)",marginBottom:8}}>Khách <b style={{color:"var(--text)"}}>{order.cus}</b> quét để chuyển khoản</div>
+            <div style={{background:"#fff",border:"1px solid var(--bd)",borderRadius:12,padding:10,display:"inline-block",boxShadow:"var(--sh-sm)"}}>
+              <img src={url} alt="VietQR" style={{width:240,height:240,objectFit:"contain",display:"block"}}
+                onError={e=>{e.currentTarget.style.display="none";}}/>
+            </div>
+            <div style={{margin:"12px 0 4px",display:"flex",alignItems:"center",gap:8,justifyContent:"center"}}>
+              <span style={{fontSize:11,color:"var(--mut)"}}>Số tiền</span>
+              <input type="number" value={amt} onChange={e=>setAmt(Math.max(0,+e.target.value||0))}
+                style={{width:130,padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:8,fontSize:15,fontWeight:800,textAlign:"center",color:"var(--or)"}}/>
+              <span style={{fontSize:11,color:"var(--mut)"}}>đ</span>
+            </div>
+            {amt!==baseAmt && <button onClick={()=>setAmt(baseAmt)} style={{fontSize:10.5,color:"var(--or)",background:"none",border:"none",cursor:"pointer",fontWeight:700}}>↺ Về tổng đơn {fmt(baseAmt)}</button>}
+            <div style={{marginTop:10,padding:"9px 12px",background:"#F5F3FF",borderRadius:8,fontSize:11.5,color:"#5b21b6",textAlign:"left",lineHeight:1.6}}>
+              <div><b>{appConfig.name||"—"}</b></div>
+              <div>{appConfig.bank} · {appConfig.acc}</div>
+              <div style={{color:"var(--mut)"}}>Nội dung: {info}</div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ReturnReasonModal({order,onClose,onConfirm}){
   const [reason,setReason] = useState("");
   const presets = ["Khách không nhận máy","Khách báo huỷ giữa đường","Sai địa chỉ","Sai món","Khác"];
@@ -2559,9 +2705,10 @@ function ShipperOrderCard({o,staff,actions,showShipper=true}){
 /* v1.5: Shipper APP — standalone, không sidebar/topbar, full-screen như Grab Driver
    Tab: Pool (đơn chờ tự nhận) / Đang giao / Lịch sử
    Self-claim: tap "Nhận đơn" → UPDATE WHERE sid IS NULL (concurrency-safe) */
-function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,doReturn,onLogout,toast,connStatus,currentShift,onlineUsers}){
+function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,doReturn,onLogout,toast,connStatus,currentShift,onlineUsers,appConfig={},soundEnabled,onToggleSound}){
   // v1.9: bỏ tab pool — shipper KHÔNG tự nhận đơn nữa, chỉ trưởng ca phân
-  const [tab,setTab] = useState("active"); // active | history
+  const [tab,setTab] = useState("active"); // active | history | kpi
+  const [qrFor,setQrFor] = useState(null); // đơn đang hiện QR thu tiền
   const [focusId,setFocusId] = useState(null);
   const [returnFor,setReturnFor] = useState(null);
   const [now,setNow] = useState(new Date());
@@ -2583,6 +2730,11 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
   const todayFee = doneToday.reduce((s,o)=>s+(o.dFee||0),0);
   const returnedCount = finished.filter(o=>o.st==="hoan_hang").length;
   const compRate = mine.length ? Math.round(doneToday.length/mine.length*100) : 0;
+  // v1.15: KPI giải ngân cả đợt — tổng phí ship đã giao + thưởng/đơn (cấu hình)
+  const bonusRate = appConfig?.shipBonus || 0;
+  const shipFeeTotal = todayFee;             // tổng phí ship đơn đã giao
+  const bonusTotal = doneToday.length * bonusRate;
+  const payoutTotal = shipFeeTotal + bonusTotal;
 
   const elapsed = (t) => {
     if (!t) return 0;
@@ -2632,6 +2784,12 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
             <span style={{width:6,height:6,borderRadius:"50%",background:connStatus==="live"?"#22c55e":"#ef4444",boxShadow:connStatus==="live"?"0 0 6px #22c55e":"none"}}/>
             {connStatus==="live"?"Online":"Mất kết nối"}
           </div>
+          {onToggleSound && (
+            <button onClick={onToggleSound} title={soundEnabled?"Tắt âm thanh":"Bật âm thanh"} aria-label="Âm thanh"
+              style={{background:soundEnabled?"rgba(255,255,255,.16)":"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",fontSize:14,width:30,height:30,borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:soundEnabled?1:.6}}>
+              <i className={`ti ${soundEnabled?"ti-volume":"ti-volume-off"}`}/>
+            </button>
+          )}
           <button onClick={onLogout} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",fontSize:11,padding:"5px 11px",borderRadius:"var(--r-pill)",cursor:"pointer",fontWeight:600}}>
             <i className="ti ti-logout" style={{fontSize:12,marginRight:4}}/>Thoát
           </button>
@@ -2673,7 +2831,8 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
       <div style={{display:"flex",background:"#fff",borderBottom:"1px solid var(--bd)",padding:"0 12px",gap:0,flexShrink:0}}>
         {[
           {k:"active", l:"Đang giao",    c:active.length},
-          {k:"history",l:"Lịch sử",      c:finished.length}
+          {k:"history",l:"Lịch sử",      c:finished.length},
+          {k:"kpi",    l:"KPI / Lương",  c:0}
         ].map(t=>(
           <button key={t.k} onClick={()=>setTab(t.k)}
             style={{flex:1,padding:"13px 0",border:"none",background:"none",cursor:"pointer",fontSize:12.5,fontWeight:700,
@@ -2793,6 +2952,11 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
                       <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{fmt(itemTotal(current)+(current.dFee||0))}</div>
                     </div>
                   </div>
+                  {/* v1.15: nút hiện QR thu tiền cho shipper */}
+                  <button onClick={()=>setQrFor(current)}
+                    style={{width:"100%",marginTop:10,padding:"12px",borderRadius:10,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0EA5E9,#0369A1)",color:"#fff",fontSize:13.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(2,132,199,.28)"}}>
+                    <i className="ti ti-qrcode" style={{fontSize:18}}/>Hiện QR thu tiền · {fmt(itemTotal(current)+(current.dFee||0))}
+                  </button>
                 </div>
 
                 {/* CTA buttons */}
@@ -2872,14 +3036,57 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
         </div>
       )}
 
+      {tab==="kpi" && (
+        <div style={{flex:1,padding:14,display:"flex",flexDirection:"column",gap:12}}>
+          <div style={{background:"linear-gradient(135deg,#0F172A,#1E293B)",color:"#fff",borderRadius:14,padding:18,boxShadow:"var(--sh-md)"}}>
+            <div style={{fontSize:11,opacity:.7,fontWeight:600,letterSpacing:.4}}>💰 TỔNG GIẢI NGÂN DỰ KIẾN (CẢ ĐỢT)</div>
+            <div style={{fontSize:32,fontWeight:800,color:"#FCD34D",marginTop:4}}>{fmt(payoutTotal)}</div>
+            <div style={{fontSize:10.5,opacity:.6,marginTop:4}}>Cập nhật realtime theo đơn đã giao thành công</div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {[
+              {l:"Đơn đã giao",v:doneToday.length,c:"#15803d",bg:"#dcfce7"},
+              {l:"Tổng phí ship",v:fmt(shipFeeTotal),c:"#C2410C",bg:"#ffedd5"},
+              {l:`Thưởng (${fmt(bonusRate)}/đơn)`,v:fmt(bonusTotal),c:"#5b21b6",bg:"#ede9fe"},
+              {l:"Hoàn hàng",v:returnedCount,c:"#9d174d",bg:"#fce7f3"},
+            ].map(s=>(
+              <div key={s.l} style={{background:s.bg,borderRadius:12,padding:"13px 14px"}}>
+                <div style={{fontSize:10.5,color:s.c,fontWeight:700,opacity:.9}}>{s.l}</div>
+                <div style={{fontSize:20,fontWeight:800,color:s.c,marginTop:3}}>{s.v}</div>
+              </div>
+            ))}
+          </div>
+          <div style={{background:"#fff",border:"1px solid var(--bd)",borderRadius:12,padding:14}}>
+            <div style={{fontSize:12,fontWeight:800,color:"var(--text)",marginBottom:10}}>📦 Chi tiết đơn đã giao</div>
+            {doneToday.length===0 ? (
+              <div style={{textAlign:"center",padding:"20px 0",color:"var(--mut)",fontSize:12}}>Chưa có đơn giao thành công</div>
+            ) : (
+              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                {[...doneToday].reverse().map(o=>(
+                  <div key={o.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",fontSize:12,padding:"7px 0",borderBottom:"1px dashed #F0F0F0"}}>
+                    <span style={{fontFamily:"ui-monospace,monospace",fontWeight:700,color:"var(--mut)"}}>{o.id}</span>
+                    <span style={{flex:1,margin:"0 8px",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",color:"var(--text)"}}>{o.cus}</span>
+                    <span style={{fontWeight:800,color:"#15803d"}}>+{fmt((o.dFee||0)+bonusRate)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div style={{fontSize:10.5,color:"var(--mut)",textAlign:"center",lineHeight:1.6}}>
+            Giải ngân = tổng phí ship đơn đã giao{bonusRate>0?` + thưởng ${fmt(bonusRate)}/đơn`:""}.<br/>Trưởng ca/Admin chốt giải ngân cuối đợt.
+          </div>
+        </div>
+      )}
+
       </div> {/* /content area */}
 
       {returnFor && <ReturnReasonModal order={returnFor} onClose={()=>setReturnFor(null)} onConfirm={r=>doReturn(returnFor.id,r)}/>}
+      {qrFor && <QrPayModal order={qrFor} appConfig={appConfig} onClose={()=>setQrFor(null)} toast={toast}/>}
     </div>
   );
 }
 
-function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effectiveRole,toast,shiftAssignments=[],currentShift=null}){
+function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effectiveRole,toast,shiftAssignments=[],currentShift=null,appConfig={}}){
   const [returnFor,setReturnFor] = useState(null);
   // v1.9.1: 2-step assign — chọn shipper rồi mới chốt
   const [pendingPick,setPendingPick] = useState({}); // {[orderId]: shipperId}
@@ -2952,6 +3159,15 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
     {l:"Hoàn hàng",   v:returned.length,ic:"ti-arrow-back",  bg:"#fce7f3",tc:"#9d174d"},
   ];
 
+  // v1.15: bảng lương shipper CẢ ĐỢT — tổng phí ship đơn đã giao + thưởng/đơn
+  const bonusRate = appConfig?.shipBonus || 0;
+  const payrollMap = {};
+  finished.forEach(o=>{ if(o.sid==null) return; const m=payrollMap[o.sid]=payrollMap[o.sid]||{count:0,fee:0}; m.count++; m.fee+=o.dFee||0; });
+  const payroll = Object.entries(payrollMap)
+    .map(([sid,m])=>({sid:+sid,name:staff.find(s=>s.id===+sid)?.name||"—",count:m.count,fee:m.fee,bonus:m.count*bonusRate,total:m.fee+m.count*bonusRate}))
+    .sort((a,b)=>b.total-a.total);
+  const payrollTotal = payroll.reduce((s,p)=>s+p.total,0);
+
   // v1.9.1: cần điều phối = ship đang chuẩn bị (pha_che) + sẵn sàng (san_sang)
   const needCoord = ship.filter(o=>["pha_che","san_sang"].includes(o.st)).sort((a,b)=>{
     // Đã có sid xuống cuối (vì đã chốt rồi), san_sang lên trước pha_che
@@ -2972,6 +3188,56 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
+
+      {/* v1.15: BẢNG LƯƠNG SHIPPER CẢ ĐỢT — KPI giải ngân cuối đợt */}
+      {canAssign && (
+        <div style={{background:"#fff",border:"1px solid var(--bd)",borderRadius:12,padding:14,marginBottom:14,boxShadow:"var(--sh-sm)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,flexWrap:"wrap"}}>
+            <span style={{fontSize:18}}>💰</span>
+            <div style={{flex:1,minWidth:140}}>
+              <div style={{fontSize:14,fontWeight:800,color:"var(--text)"}}>Lương Shipper (cả đợt)</div>
+              <div style={{fontSize:10.5,color:"var(--mut)"}}>Tổng phí ship đã giao{bonusRate>0?` + thưởng ${fmt(bonusRate)}/đơn`:""} · giải ngân cuối đợt</div>
+            </div>
+            <div style={{textAlign:"right"}}>
+              <div style={{fontSize:10,color:"var(--mut)"}}>Tổng giải ngân</div>
+              <div style={{fontSize:18,fontWeight:800,color:"var(--or)"}}>{fmt(payrollTotal)}</div>
+            </div>
+          </div>
+          {payroll.length===0 ? (
+            <div style={{textAlign:"center",padding:"12px 0",color:"var(--mut)",fontSize:11.5}}>Chưa có đơn ship nào giao thành công.</div>
+          ) : (
+            <div style={{overflowX:"auto"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                <thead>
+                  <tr style={{color:"var(--mut)",fontSize:10.5,textTransform:"uppercase"}}>
+                    <th style={{textAlign:"left",padding:"6px 8px",fontWeight:700}}>Shipper</th>
+                    <th style={{textAlign:"center",padding:"6px 8px",fontWeight:700}}>Đơn</th>
+                    <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Phí ship</th>
+                    {bonusRate>0 && <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Thưởng</th>}
+                    <th style={{textAlign:"right",padding:"6px 8px",fontWeight:700}}>Giải ngân</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payroll.map(p=>(
+                    <tr key={p.sid} style={{borderTop:"1px solid var(--bd2)"}}>
+                      <td style={{padding:"8px",fontWeight:700,color:"var(--text)"}}>
+                        <span style={{display:"inline-flex",alignItems:"center",gap:6}}>
+                          <span style={{width:22,height:22,borderRadius:"50%",background:"#ede9fe",color:"#5b21b6",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(p.name)}</span>
+                          {p.name}
+                        </span>
+                      </td>
+                      <td style={{textAlign:"center",padding:"8px",fontWeight:700,color:"var(--text2)"}}>{p.count}</td>
+                      <td style={{textAlign:"right",padding:"8px",color:"var(--text2)"}}>{fmt(p.fee)}</td>
+                      {bonusRate>0 && <td style={{textAlign:"right",padding:"8px",color:"#5b21b6"}}>{fmt(p.bonus)}</td>}
+                      <td style={{textAlign:"right",padding:"8px",fontWeight:800,color:"var(--or)"}}>{fmt(p.total)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* v1.9.3: PHÂN CÔNG SHIPPER — LUÔN render, đầu trang — flow Chọn → Chốt → Ping */}
       {canAssign && (
@@ -3632,7 +3898,7 @@ function TelegramSettings({staff,setStaff,toast}){
   );
 }
 
-function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,pickupLocs,setPickupLocs,shift,setShift,categories,setCategories,shifts,setShifts,shiftAssignments,upsertAssignment,deleteAssignment,currentUser,toast}){
+function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,pickupLocs,setPickupLocs,shift,setShift,categories,setCategories,shifts,setShifts,shiftAssignments,upsertAssignment,deleteAssignment,currentUser,toast,appConfig={},setAppConfig=()=>{}}){
   const [tab,setTab] = useState("staff");
   const [recipe,setRecipe] = useState(null);
 
@@ -3661,7 +3927,7 @@ function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,pick
       {tab==="cat"  &&<CategorySettings categories={categories} setCategories={setCategories} products={products} toast={toast}/>}
       {tab==="shift"&&<ShiftSettings shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} staff={staff} toast={toast}/>}
       {tab==="tg"   &&<TelegramSettings staff={staff} setStaff={setStaff} toast={toast}/>}
-      {tab==="gen"  &&<GeneralSettings zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} staff={staff} products={products} toast={toast}/>}
+      {tab==="gen"  &&<GeneralSettings zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} staff={staff} products={products} toast={toast} appConfig={appConfig} setAppConfig={setAppConfig}/>}
 
       {recipe&&<RecipeModal product={recipe} onClose={()=>setRecipe(null)}
         onSave={updated=>setProducts(ps=>ps.map(p=>p.id===recipe.id?{...p,recipe:updated}:p))} toast={toast}/>}
@@ -4568,7 +4834,7 @@ function ProductSettings({products,setProducts,categories,setRecipe,toast}){
   );
 }
 
-function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setShift,staff,products,toast}){
+function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setShift,staff,products,toast,appConfig={},setAppConfig=()=>{}}){
   const updateZone=(i,k,v)=>setZones(zs=>zs.map((z,idx)=>idx===i?{...z,[k]:k==="fee"?+v:v}:z));
   const addZone=()=>setZones(zs=>[...zs,{lb:"Khu vực mới",fee:10000}]);
   const removeZone=i=>setZones(zs=>zs.filter((_,idx)=>idx!==i));
@@ -4576,9 +4842,60 @@ function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setSh
   const updatePickup=(id,name)=>setPickupLocs(ps=>ps.map(p=>p.id===id?{...p,name}:p));
   const addPickup=()=>setPickupLocs(ps=>[...ps,{name:"Điểm lấy mới"}]);
   const removePickup=id=>setPickupLocs(ps=>ps.filter(p=>p.id!==id));
+  // v1.15: cấu hình VietQR + thưởng shipper (form cục bộ, lưu khi bấm)
+  const [cfg,setCfg] = useState({bank:appConfig.bank||"",acc:appConfig.acc||"",name:appConfig.name||"",shipBonus:appConfig.shipBonus||0});
+  useEffect(()=>{ setCfg({bank:appConfig.bank||"",acc:appConfig.acc||"",name:appConfig.name||"",shipBonus:appConfig.shipBonus||0}); },[appConfig.bank,appConfig.acc,appConfig.name,appConfig.shipBonus]);
+  const VN_BANKS = ["VCB","TCB","BIDV","VTB","MB","ACB","VPB","TPB","STB","VIB","SHB","HDB","OCB","MSB","SCB","VBA","EIB","NAB","ABB","BAB","SGB","LPB","KLB","PGB","NVB","VCCB","CAKE","Timo"];
+  const cfgInp = {width:"100%",padding:"8px 11px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12.5,background:"#fff"};
+  const cfgLbl = {fontSize:10.5,color:"#767676",fontWeight:600,marginBottom:4,display:"block"};
+  const saveCfg = () => { if(!cfg.bank||!cfg.acc){toast("Cần chọn ngân hàng + nhập số tài khoản","warn");return;} setAppConfig({bank:cfg.bank.trim(),acc:cfg.acc.trim(),name:cfg.name.trim(),shipBonus:+cfg.shipBonus||0}); };
+  const previewUrl = (cfg.bank&&cfg.acc) ? vietqrUrl({bank:cfg.bank,acc:cfg.acc,name:cfg.name}, 50000, "Xem thu") : "";
 
   return (
     <>
+      {/* v1.15: Tài khoản nhận tiền (VietQR) + KPI shipper */}
+      <div className="card" style={{padding:14,marginBottom:14}}>
+        <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:4}}>💳 Tài khoản nhận tiền (VietQR) & KPI Shipper</div>
+        <div style={{fontSize:11,color:"#767676",marginBottom:12,lineHeight:1.5}}>Dùng để sinh mã QR cho shipper thu tiền khách. Lưu vào DB để mọi thiết bị (shipper) dùng chung.</div>
+        {!CONFIG_DB_OK && (
+          <div style={{fontSize:11.5,color:"#92400e",background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:6,padding:"9px 12px",lineHeight:1.55,marginBottom:12}}>
+            ⚠ Chưa có bảng <code>app_config</code> trong DB. Chạy migration trong <b>supabase-schema.sql</b> rồi reload để lưu được cấu hình dùng chung.
+          </div>
+        )}
+        <div style={{display:"flex",gap:14,flexWrap:"wrap"}}>
+          <div style={{flex:1,minWidth:240}}>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <div>
+                <label style={cfgLbl}>Ngân hàng</label>
+                <select value={cfg.bank} onChange={e=>setCfg(c=>({...c,bank:e.target.value}))} style={{...cfgInp,cursor:"pointer"}}>
+                  <option value="">— Chọn —</option>
+                  {VN_BANKS.map(b=><option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={cfgLbl}>Số tài khoản</label>
+                <input value={cfg.acc} onChange={e=>setCfg(c=>({...c,acc:e.target.value.replace(/[^0-9]/g,"")}))} placeholder="VD: 0123456789" style={cfgInp}/>
+              </div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <label style={cfgLbl}>Tên chủ tài khoản (IN HOA không dấu)</label>
+              <input value={cfg.name} onChange={e=>setCfg(c=>({...c,name:e.target.value.toUpperCase()}))} placeholder="VD: CLB 37FTU" style={cfgInp}/>
+            </div>
+            <div style={{marginBottom:12}}>
+              <label style={cfgLbl}>Thưởng shipper / đơn giao thành công (đ)</label>
+              <input type="number" value={cfg.shipBonus} onChange={e=>setCfg(c=>({...c,shipBonus:Math.max(0,+e.target.value||0)}))} placeholder="0" style={{...cfgInp,maxWidth:160}}/>
+              <div style={{fontSize:10,color:"#999",marginTop:3}}>KPI giải ngân shipper = tổng phí ship + thưởng × số đơn. Để 0 nếu chỉ tính phí ship.</div>
+            </div>
+            <button onClick={saveCfg} className="btn-pri" style={{padding:"9px 18px",borderRadius:6,fontSize:12.5,fontWeight:700}}>💾 Lưu cấu hình</button>
+          </div>
+          <div style={{width:150,textAlign:"center"}}>
+            <div style={{fontSize:10.5,color:"#767676",marginBottom:6}}>Xem trước QR</div>
+            {previewUrl
+              ? <img src={previewUrl} alt="preview" style={{width:140,height:140,objectFit:"contain",border:"1px solid var(--bd)",borderRadius:8,padding:6,background:"#fff"}} onError={e=>{e.currentTarget.style.opacity=.3;}}/>
+              : <div style={{width:140,height:140,border:"1px dashed var(--bd)",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:"#bbb",fontSize:11}}>Chọn NH + STK</div>}
+          </div>
+        </div>
+      </div>
       <div className="card" style={{padding:14,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
           <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>🏭 Điểm lấy hàng</div>
@@ -4668,7 +4985,7 @@ function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setSh
    Header tối giản (logout + status), KHÔNG sidebar/topbar admin.
    Dùng cho pha_che, truc_don (shipper có vỏ riêng ShipperApp).
 ══════════════════════════════════════════════════════════ */
-function RoleAppShell({roleKey,title,icon,bgColor,currentUser,currentShift,connStatus,onLogout,onlineUsers=[],children}){
+function RoleAppShell({roleKey,title,icon,bgColor,currentUser,currentShift,connStatus,onLogout,onlineUsers=[],soundEnabled,onToggleSound,children}){
   return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,-apple-system,sans-serif",overflow:"hidden",background:"#F5F5F5"}}>
       {/* App header */}
@@ -4691,6 +5008,12 @@ function RoleAppShell({roleKey,title,icon,bgColor,currentUser,currentShift,connS
             <span style={{width:6,height:6,borderRadius:"50%",background:connStatus==="live"?"#22c55e":"#ef4444"}}/>
             {connStatus==="live"?"Online":"Offline"}
           </div>
+          {onToggleSound && (
+            <button onClick={onToggleSound} title={soundEnabled?"Tắt âm thanh":"Bật âm thanh"} aria-label="Âm thanh"
+              style={{background:soundEnabled?"rgba(255,255,255,.16)":"rgba(255,255,255,.05)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",fontSize:14,width:30,height:30,borderRadius:"50%",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",opacity:soundEnabled?1:.6}}>
+              <i className={`ti ${soundEnabled?"ti-volume":"ti-volume-off"}`}/>
+            </button>
+          )}
           <button onClick={onLogout} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",color:"#fff",fontSize:11,padding:"5px 11px",borderRadius:"var(--r-pill)",cursor:"pointer",fontWeight:600}}>
             <i className="ti ti-logout" style={{fontSize:12,marginRight:4}}/>Thoát
           </button>
@@ -4721,6 +5044,9 @@ function App(){
   const [onlineUsers,setOnlineUsers] = useState([]); // v1.4: presence tracking
   const channelRef = useRef(null);
   const [notifEnabled,setNotifEnabled] = useState(()=>localStorage.getItem("clb_notif")==="1");
+  const [soundEnabled,setSoundEnabled] = useState(()=>localStorage.getItem("clb_sound")!=="0"); // mặc định BẬT
+  const [flashEvent,setFlashEvent] = useState(null); // hiệu ứng động khi có đơn mới
+  const [appConfig,_setAppConfig] = useState({bank:"",acc:"",name:"",shipBonus:0}); // v1.15: cấu hình VietQR + KPI shipper
   const [tickMin,setTickMin] = useState(0); // re-render mỗi phút để cập nhật ca hiện tại
   const [toasts,setToasts]   = useState([]);
   const [time,setTime]       = useState(nowS());
@@ -4741,9 +5067,11 @@ function App(){
   const effectiveRoleRef = useRef("off");
   const currentUserRef   = useRef(null);
   const notifEnabledRef  = useRef(notifEnabled);
+  const soundEnabledRef  = useRef(soundEnabled);
   const onlineUsersRef   = useRef([]);
   const currentShiftRef  = useRef(null);
   const shiftAssignmentsRef = useRef([]);
+  const appConfigRef = useRef({bank:"",acc:"",name:"",shipBonus:0});
 
   // v1.8: Telegram broadcast — gửi cho tất cả staff có chat_id, lọc theo role-trong-ca-hiện-tại
   const tgBroadcast = useCallback((roles, text)=>{
@@ -4884,7 +5212,7 @@ function App(){
   useEffect(()=>{
     (async()=>{
       try{
-        const [pR,sR,oR,zR,shR,cR,shsR,saR,plR] = await Promise.all([
+        const [pR,sR,oR,zR,shR,cR,shsR,saR,plR,acR] = await Promise.all([
           sb.from("products").select("*").order("id"),
           sb.from("staff").select("*").order("id"),
           sb.from("orders").select("*").order("num"),
@@ -4894,6 +5222,7 @@ function App(){
           sb.from("shifts").select("*").order("sort"),
           sb.from("shift_assignments").select("*"),
           sb.from("pickup_locations").select("*").order("sort"), // v1.11 (bảng có thể chưa tồn tại → xử lý mềm)
+          sb.from("app_config").select("*").eq("id",1).maybeSingle(), // v1.15 (bảng có thể chưa tồn tại → xử lý mềm)
         ]);
         if (pR.error||sR.error||oR.error||zR.error){
           toast("Lỗi tải dữ liệu. Kiểm tra Supabase / chạy schema.sql","error");
@@ -4941,6 +5270,11 @@ function App(){
         if (!PICKUP_DB_OK) console.warn("[BaBayBite] Bảng 'pickup_locations' chưa có — tính năng điểm lấy hàng tạm tắt. Chạy migration trong supabase-schema.sql rồi reload.");
         else if (!ORDER_PICKUP_OK) console.warn("[BaBayBite] Cột 'orders.pickup_id' chưa có — đơn chưa lưu được điểm lấy hàng. Chạy ALTER TABLE rồi reload.");
         PICKUP_LOCS = pls;
+        // v1.15: cấu hình app (VietQR + thưởng shipper)
+        CONFIG_DB_OK = !acR.error;
+        if (!CONFIG_DB_OK) console.warn("[BaBayBite] Bảng 'app_config' chưa có — VietQR/KPI shipper tạm dùng mặc định. Chạy migration trong supabase-schema.sql rồi reload.");
+        const acfg = (CONFIG_DB_OK && acR.data) ? {bank:acR.data.bank||"",acc:acR.data.acc||"",name:acR.data.name||"",shipBonus:acR.data.ship_bonus||0} : {bank:"",acc:"",name:"",shipBonus:0};
+        appConfigRef.current = acfg; _setAppConfig(acfg);
         const os = (oR.data||[]).map(orderFromDb);
         const zs = zR.data||[];
         const sh = shR.data ? shiftFromDb(shR.data) : {name:"Ca sáng",start:"07:45",end:"12:00"};
@@ -5101,7 +5435,7 @@ function App(){
             }
           } else if (role === "pha_che" || role === "truong_ca") {
             const itemCount = (r.items||[]).reduce((s,i)=>s+(i.qty||0),0);
-            notify(`🆕 Đơn mới ${orderId(r.num)}`, `${r.cus} — ${itemCount} món`);
+            notify(`🆕 Đơn mới ${orderId(r.num)}`, `${r.cus} — ${itemCount} món`, "new");
           }
           // v1.8: Telegram noti — leader gửi để dedupe
           if (TG.isOn() && TG.isLeader(currentUserRef.current?.id, onlineUsersRef.current||[])) {
@@ -5124,7 +5458,7 @@ function App(){
               notify(`📦 Đơn cần phân shipper ${orderId(r.num)}`, `${r.cus} — ${r.adr||""}`);
             }
             if (role === "shipper") {
-              notify(`🆕 Đơn mới có thể nhận: ${orderId(r.num)}`, `${r.cus} — ${r.adr||""}`);
+              notify(`🆕 Đơn mới có thể nhận: ${orderId(r.num)}`, `${r.cus} — ${r.adr||""}`, "ship");
             }
             // v1.8: Telegram — leader gửi cho tất cả shipper + trưởng ca
             if (TG.isOn() && TG.isLeader(currentUserRef.current?.id, onlineUsersRef.current||[])) {
@@ -5135,7 +5469,7 @@ function App(){
           // Shipper bị gán đơn (sid thay đổi sang chính họ) → báo riêng cho shipper đó
           const uid = currentUserRef.current?.id;
           if (role === "shipper" && r.sid === uid && old.sid !== uid) {
-            notify(`🛵 Bạn vừa được giao đơn ${orderId(r.num)}`, `${r.cus} — ${r.adr||""}`);
+            notify(`🛵 Bạn vừa được giao đơn ${orderId(r.num)}`, `${r.cus} — ${r.adr||""}`, "ship");
           }
           // v1.8: Telegram DM cá nhân cho shipper được gán (bất kỳ client nào nhận sự kiện, gửi 1 lần qua leader)
           if (TG.isOn() && r.sid && r.sid !== old.sid && TG.isLeader(currentUserRef.current?.id, onlineUsersRef.current||[])) {
@@ -5239,12 +5573,30 @@ function App(){
     notifEnabledRef.current = notifEnabled;
     localStorage.setItem("clb_notif", notifEnabled?"1":"0");
   },[notifEnabled]);
+  useEffect(()=>{ soundEnabledRef.current = soundEnabled; },[soundEnabled]);
+  // v1.15: lưu cấu hình app (VietQR + thưởng shipper) — upsert 1 dòng id=1
+  const setAppConfig = useCallback(async (patch)=>{
+    const next = {...(appConfigRef.current||{}), ...patch};
+    appConfigRef.current = next; _setAppConfig(next);
+    if (!CONFIG_DB_OK) { toast("⚠ Chưa có bảng app_config — chạy migration (xem README) rồi reload.","warn"); return; }
+    const {error} = await sb.from("app_config").upsert({id:1, bank:next.bank||"", acc:next.acc||"", name:next.name||"", ship_bonus:next.shipBonus||0});
+    if (error) toast(`Lỗi lưu cấu hình: ${error.message}`,"error"); else toast("✓ Đã lưu cấu hình","success");
+  },[toast]);
 
-  const notify = useCallback((title, body) => {
+  const notify = useCallback((title, body, kind="new") => {
+    // Hiệu ứng động + âm thanh trong app (độc lập quyền browser)
+    if (soundEnabledRef.current) {
+      playBeep(kind);
+      setFlashEvent({id:Date.now()+Math.random(), title, body, kind});
+    }
+    // Thông báo hệ điều hành (cần quyền + bật)
     if (!notifEnabledRef.current) return;
     if (!("Notification" in window) || Notification.permission !== "granted") return;
     try { new Notification(title, {body, icon:"🛒", tag:"clb-"+Date.now(), silent:false}); } catch(e){}
   },[]);
+  const toggleSound = useCallback(()=>{
+    setSoundEnabled(v=>{ const nv=!v; localStorage.setItem("clb_sound",nv?"1":"0"); if(nv) playBeep("new"); toast(nv?"🔊 Đã bật âm thanh báo đơn":"🔇 Đã tắt âm thanh","info"); return nv; });
+  },[toast]);
 
   const toggleNotif = useCallback(async () => {
     if (!("Notification" in window)) { toast("Trình duyệt không hỗ trợ thông báo","error"); return; }
@@ -5286,14 +5638,14 @@ function App(){
                comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
     kitchen:  {title:"Pha chế (KDS)",    sub:"Kitchen Display System · Realtime",
                comp:<KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>},
-    shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển",
-               comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift}/>},
+    shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển · KPI giải ngân",
+               comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>},
     staff:    {title:"Nhân sự & KPI",    sub:"Phân công · Theo dõi KPI · Bảng xếp hạng",
                comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments} viewDate={viewDate} setViewDate={setViewDate}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
                comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate} shiftAssignments={shiftAssignments} currentShift={currentShift}/>},
     settings: {title:"Cài đặt",          sub:"Quản lý nhân sự, sản phẩm, danh mục, lịch ca",
-               comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast}/>},
+               comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast} appConfig={appConfig} setAppConfig={setAppConfig}/>},
   };
 
   if (loading) {
@@ -5338,6 +5690,8 @@ function App(){
       <i className="ti ti-shield-lock" style={{fontSize:15}}/>Về chế độ Admin
     </button>
   ) : null;
+  // v1.15: overlay hiệu ứng động khi có đơn mới (render ở mọi shell)
+  const flashEl = <NotifFlash event={flashEvent}/>;
 
   // Đang nghỉ → màn rest
   if (effectiveRole === "off") {
@@ -5369,9 +5723,10 @@ function App(){
         orders={orders} currentUser={currentUser} staff={staff}
         pickup={pickup} startShip={startShip} complete={complete}
         cancel={cancelSh} doReturn={doReturnSh}
-        onLogout={handleLogout} toast={toast}
+        onLogout={handleLogout} toast={toast} appConfig={appConfig}
+        soundEnabled={soundEnabled} onToggleSound={toggleSound}
         connStatus={connStatus} currentShift={currentShift} onlineUsers={onlineUsers}/>
-      {adminMemberBar}
+      {adminMemberBar}{flashEl}
     </>;
   }
 
@@ -5379,10 +5734,11 @@ function App(){
   if (effectiveRole === "pha_che") {
     return <>
       <RoleAppShell roleKey="pha_che" title="PHA CHẾ — KDS" icon="☕" bgColor="linear-gradient(135deg,#1E40AF,#1E3A8A)"
-        currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}>
+        currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}
+        soundEnabled={soundEnabled} onToggleSound={toggleSound}>
         <KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>
       </RoleAppShell>
-      {adminMemberBar}
+      {adminMemberBar}{flashEl}
     </>;
   }
 
@@ -5390,10 +5746,11 @@ function App(){
   if (effectiveRole === "truc_don") {
     return <>
       <RoleAppShell roleKey="truc_don" title="TRỰC ĐƠN" icon="📋" bgColor="linear-gradient(135deg,#C73D22,#A12714)"
-        currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}>
-        <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift}/>
+        currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}
+        soundEnabled={soundEnabled} onToggleSound={toggleSound}>
+        <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>
       </RoleAppShell>
-      {adminMemberBar}
+      {adminMemberBar}{flashEl}
     </>;
   }
 
@@ -5407,10 +5764,11 @@ function App(){
       {sbOpen && <div className="sb-overlay" onClick={()=>setSbOpen(false)}/>}
       <Sidebar screen={activeScreen} setScreen={(s)=>{setScreen(s);setSbOpen(false);}} orders={orders} currentShift={currentShift} allowed={allowed} sbOpen={sbOpen} onClose={()=>setSbOpen(false)} onLogout={handleLogout} currentUser={currentUser} effectiveRole={effectiveRole} onlineUsers={onlineUsers} onViewAsMember={currentUser.isAdmin?()=>{setAdminMode("member");setSbOpen(false);}:null}/>
       <div className="app-main">
-        <TopBar title={cur.title} sub={cur.sub} time={time} currentUser={currentUser} connStatus={connStatus} onLogout={handleLogout} onMenu={()=>setSbOpen(true)} effectiveRole={effectiveRole} currentShift={currentShift} notifEnabled={notifEnabled} onToggleNotif={toggleNotif}/>
+        <TopBar title={cur.title} sub={cur.sub} time={time} currentUser={currentUser} connStatus={connStatus} onLogout={handleLogout} onMenu={()=>setSbOpen(true)} effectiveRole={effectiveRole} currentShift={currentShift} notifEnabled={notifEnabled} onToggleNotif={toggleNotif} soundEnabled={soundEnabled} onToggleSound={toggleSound}/>
         <div style={{flex:1,overflow:"hidden",display:"flex",minHeight:0}}>{cur.comp}</div>
       </div>
       <Toast list={toasts} dismiss={dismiss}/>
+      {flashEl}
       <HelpPopup/>
     </div>
   );

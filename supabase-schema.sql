@@ -98,6 +98,17 @@ CREATE TABLE IF NOT EXISTS pickup_locations (
   sort       INT NOT NULL DEFAULT 0
 );
 
+-- v1.15: cấu hình app (1 dòng id=1) — tài khoản VietQR nhận tiền + thưởng shipper
+CREATE TABLE IF NOT EXISTS app_config (
+  id         INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+  bank       TEXT DEFAULT '',     -- mã ngân hàng VietQR (VD: VCB, TCB, MB...)
+  acc        TEXT DEFAULT '',     -- số tài khoản nhận tiền
+  name       TEXT DEFAULT '',     -- tên chủ tài khoản (IN HOA không dấu)
+  ship_bonus INT  DEFAULT 0,      -- thưởng shipper / đơn giao thành công (đ)
+  updated_at TIMESTAMPTZ DEFAULT now()
+);
+INSERT INTO app_config (id) VALUES (1) ON CONFLICT (id) DO NOTHING;
+
 -- Singleton "shift" (legacy, giữ để backward compat — không dùng nữa)
 CREATE TABLE IF NOT EXISTS shift (
   id         INT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
@@ -142,6 +153,7 @@ ALTER TABLE categories        ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shifts            ENABLE ROW LEVEL SECURITY;
 ALTER TABLE shift_assignments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pickup_locations  ENABLE ROW LEVEL SECURITY;
+ALTER TABLE app_config        ENABLE ROW LEVEL SECURITY;
 
 DROP POLICY IF EXISTS "open_all" ON products;
 DROP POLICY IF EXISTS "open_all" ON staff;
@@ -152,6 +164,7 @@ DROP POLICY IF EXISTS "open_all" ON categories;
 DROP POLICY IF EXISTS "open_all" ON shifts;
 DROP POLICY IF EXISTS "open_all" ON shift_assignments;
 DROP POLICY IF EXISTS "open_all" ON pickup_locations;
+DROP POLICY IF EXISTS "open_all" ON app_config;
 
 CREATE POLICY "open_all" ON products          FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON staff             FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
@@ -162,6 +175,7 @@ CREATE POLICY "open_all" ON categories        FOR ALL TO anon, authenticated USI
 CREATE POLICY "open_all" ON shifts            FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON shift_assignments FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 CREATE POLICY "open_all" ON pickup_locations  FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+CREATE POLICY "open_all" ON app_config        FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
 
 -- ═══════════════════════════════════════
 -- 3. REALTIME (cho phép subscribe thay đổi)

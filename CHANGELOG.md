@@ -6,6 +6,30 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.15.0] — 2026-06-05 (+07)
+
+🛵 **KPI Shipper · QR thu tiền · Âm thanh báo đơn · Tối ưu UI Trực đơn**
+
+### Added
+- **Bảng lương / KPI Shipper (cả đợt):**
+  - Màn Giao hàng (trưởng ca/admin): bảng **"Lương Shipper cả đợt"** — mỗi shipper: số đơn giao, tổng phí ship,
+    thưởng, **tổng giải ngân**. Phục vụ giải ngân cuối đợt.
+  - ShipperApp: thêm tab **"KPI / Lương"** — tổng giải ngân dự kiến + breakdown + chi tiết từng đơn.
+  - Công thức: `tổng phí ship đơn đã giao + thưởng × số đơn` (thưởng/đơn cấu hình trong Cài đặt, mặc định 0).
+- **Nút QR thu tiền cho Shipper:** trên card đơn → modal **VietQR động** (img.vietqr.io), số tiền mặc định =
+  tổng đơn (sửa được). Tài khoản nhận tiền cấu hình ở **Cài đặt → Cài đặt chung → Tài khoản nhận tiền (VietQR)**
+  (ngân hàng + STK + tên chủ TK), lưu DB dùng chung mọi thiết bị.
+- **Âm thanh + hiệu ứng động báo đơn:** đơn mới (pha chế) & đơn được giao (shipper) phát **tiếng beep** +
+  **overlay động** giữa màn. Nút bật/tắt 🔊 ở TopBar / header pha chế / header shipper (option, mặc định bật).
+- **Bảng `app_config`** (DB): lưu cấu hình VietQR + thưởng shipper. Có cờ phát hiện mềm `CONFIG_DB_OK`
+  (app chạy bình thường nếu chưa migrate, chỉ tạm khoá QR/cấu hình).
+
+### Changed
+- **Tối ưu UI Trực đơn:** thêm **ô tìm kiếm** (mã đơn / khách / SĐT) + **chip lọc theo trạng thái** cho
+  "Đơn đang xử lý" → giảm sót/sai đơn khi số lượng lớn. Mục **Đặt trước** giữ tách riêng, sắp gần→xa.
+
+---
+
 ## [1.14.0] — 2026-06-05 (+07)
 
 📋 **Đơn Đặt trước (Pre-Order) · Bộ chọn giờ 24h**
