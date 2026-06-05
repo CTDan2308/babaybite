@@ -77,8 +77,8 @@ button:not(:disabled):active{transform:translateY(1px)}
 @keyframes spin{to{transform:rotate(360deg)}}
 @keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-8px)}40%,80%{transform:translateX(8px)}}
 @keyframes pop{0%{transform:scale(.9)}60%{transform:scale(1.04)}100%{transform:scale(1)}}
-@keyframes notifFlash{0%{opacity:0}12%{opacity:1}100%{opacity:0}}
-@keyframes notifCard{0%{transform:translateY(-18px) scale(.96);opacity:0}55%{transform:translateY(0) scale(1.02);opacity:1}100%{transform:translateY(0) scale(1)}}
+@keyframes notifFlash{0%{opacity:0}12%{opacity:1}55%{opacity:.4}100%{opacity:0}}
+@keyframes notifCard{0%{transform:translateY(-18px) scale(.96);opacity:0}6%{transform:translateY(0) scale(1.03);opacity:1}12%{transform:scale(1)}85%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-10px) scale(.98)}}
 @keyframes ringPulse{0%{box-shadow:0 0 0 0 rgba(238,77,45,.5)}70%{box-shadow:0 0 0 14px rgba(238,77,45,0)}100%{box-shadow:0 0 0 0 rgba(238,77,45,0)}}
 .fade-up{animation:fadeUp .25s var(--ease)}
 .fade-in{animation:fadeIn .2s var(--ease)}
@@ -411,8 +411,8 @@ function NotifFlash({event}){
   const c1 = ship ? "#7C3AED" : "var(--or)";
   return (
     <div key={event.id} style={{position:"fixed",inset:0,zIndex:9000,pointerEvents:"none",display:"flex",alignItems:"flex-start",justifyContent:"center"}}>
-      <div style={{position:"absolute",inset:0,background:`radial-gradient(circle at 50% 0%, ${ship?"rgba(124,58,237,.22)":"rgba(238,77,45,.22)"}, transparent 60%)`,animation:"notifFlash 1.6s ease-out forwards"}}/>
-      <div style={{marginTop:"14vh",background:"#fff",border:`2px solid ${c1}`,borderRadius:16,padding:"16px 22px",boxShadow:"0 18px 50px rgba(0,0,0,.28)",display:"flex",alignItems:"center",gap:14,animation:"notifCard 2.6s ease forwards"}}>
+      <div style={{position:"absolute",inset:0,background:`radial-gradient(circle at 50% 0%, ${ship?"rgba(124,58,237,.22)":"rgba(238,77,45,.22)"}, transparent 60%)`,animation:"notifFlash 5s ease-out forwards"}}/>
+      <div style={{marginTop:"14vh",background:"#fff",border:`2px solid ${c1}`,borderRadius:16,padding:"16px 22px",boxShadow:"0 18px 50px rgba(0,0,0,.28)",display:"flex",alignItems:"center",gap:14,animation:"notifCard 5s ease forwards"}}>
         <div style={{width:52,height:52,borderRadius:14,background:ship?"#EDE9FE":"var(--orl)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:28}}>{ship?"🛵":"🔔"}</div>
         <div>
           <div style={{fontSize:16,fontWeight:800,color:c1}}>{event.title}</div>
@@ -5071,7 +5071,7 @@ function App(){
   const channelRef = useRef(null);
   const [notifEnabled,setNotifEnabled] = useState(()=>localStorage.getItem("clb_notif")==="1");
   const [soundEnabled,setSoundEnabled] = useState(()=>localStorage.getItem("clb_sound")!=="0"); // mặc định BẬT
-  const [flashEvent,setFlashEvent] = useState(null); // hiệu ứng động khi có đơn mới
+  const [flashEvent,setFlashEvent] = useState(null); // hiệu ứng động khi có đơn mới (tự tắt sau 5s)
   const [appConfig,_setAppConfig] = useState({bank:"",acc:"",name:"",shipBonus:0}); // v1.15: cấu hình VietQR + KPI shipper
   const [tickMin,setTickMin] = useState(0); // re-render mỗi phút để cập nhật ca hiện tại
   const [toasts,setToasts]   = useState([]);
@@ -5600,6 +5600,8 @@ function App(){
     localStorage.setItem("clb_notif", notifEnabled?"1":"0");
   },[notifEnabled]);
   useEffect(()=>{ soundEnabledRef.current = soundEnabled; },[soundEnabled]);
+  // Thông báo đơn chỉ hiện ~5s rồi tự tắt (tránh kẹt cố định trên màn)
+  useEffect(()=>{ if(!flashEvent) return; const t=setTimeout(()=>setFlashEvent(null),5000); return ()=>clearTimeout(t); },[flashEvent]);
   // v1.15: lưu cấu hình app (VietQR + thưởng shipper) — upsert 1 dòng id=1
   const setAppConfig = useCallback(async (patch)=>{
     const next = {...(appConfigRef.current||{}), ...patch};
