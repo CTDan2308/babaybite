@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.16.0</title>
+<title>BaBayBite v1.16.2</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -286,7 +286,10 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.16.0";
+const VERSION = "1.16.2";
+// Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
+const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
+const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -3133,7 +3136,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
     if (!sh) { toast("Không tìm thấy shipper","error"); return; }
     if (!TG.isOn()) { toast("Chưa cấu hình Telegram Bot (Cài đặt → Telegram Bot)","warn"); return; }
     if (!sh.telegram_chat_id) { toast(`${sh.name} chưa link chat Telegram`,"warn"); return; }
-    const msg = `🔔 <b>Nhắc nhở từ Trưởng ca</b>\nĐơn <b>${o.id}</b> · ${o.cus}${o.ph?` · ${o.ph}`:""}\n📍 ${o.adr||"(tại chỗ)"}${o.schA?`\n⏰ <b>Hẹn giao: ${schedLabel(o)}</b>`:""}\n💰 Phí ship: ${fmt(o.dFee||0)}\n💬 Vui lòng xử lý ngay!`;
+    const msg = `🔔 <b>Nhắc nhở từ Trưởng ca</b>\nĐơn <b>${o.id}</b> · ${o.cus}${o.ph?` · ${o.ph}`:""}\n📍 ${o.adr||"(tại chỗ)"}${o.schA?`\n⏰ <b>Hẹn giao: ${schedLabel(o)}</b>`:""}\n💰 Phí ship: ${fmt(o.dFee||0)}\n💬 Vui lòng xử lý ngay!${TG_LINK}`;
     const r = await TG.send(sh.telegram_chat_id, msg);
     if (r && r.ok) toast(`✓ Đã ping ${sh.name} qua Telegram`,"success");
     else toast(`Gửi ping thất bại${r?.description?`: ${r.description}`:""}`,"error");
@@ -3793,7 +3796,7 @@ function TelegramSettings({staff,setStaff,toast}){
   const testSend = async (s)=>{
     if (!s.telegram_chat_id) { toast("Chưa có chat_id cho "+s.name,"warn"); return; }
     setBusy(true);
-    const r = await TG.send(s.telegram_chat_id, `🔔 <b>Test từ BaBayBite</b>\nXin chào <b>${s.name}</b>!\nBạn sẽ nhận noti khi có đơn cần xử lý.`);
+    const r = await TG.send(s.telegram_chat_id, `🔔 <b>Test từ BaBayBite</b>\nXin chào <b>${s.name}</b>!\nBạn sẽ nhận noti khi có đơn cần xử lý.${TG_LINK}`);
     setBusy(false);
     if (r?.ok) toast(`✓ Đã gửi tới ${s.name}`,"success");
     else toast(`Lỗi gửi: ${r?.description||r?.error||"không rõ"}`,"error");
@@ -5470,10 +5473,10 @@ function App(){
             if (r.st === "cho_xac_nhan") {
               // Báo các trực đơn + trưởng ca có chat_id
               tgBroadcast(["truc_don","truong_ca","admin"],
-                `🔔 <b>Đơn KHÁCH chờ duyệt</b>\n${orderId(r.num)} · ${r.cus||""}${r.ph?` · ${r.ph}`:""}\n${summary}\n💰 ${fmt(dbTot(r))}`);
+                `🔔 <b>Đơn KHÁCH chờ duyệt</b>\n${orderId(r.num)} · ${r.cus||""}${r.ph?` · ${r.ph}`:""}\n${summary}\n💰 ${fmt(dbTot(r))}${TG_LINK}`);
             } else {
               tgBroadcast(["pha_che","truong_ca","admin"],
-                `🆕 <b>Đơn mới ${orderId(r.num)}</b>\n${r.cus||""} — ${itemCount} món\n${summary}`);
+                `🆕 <b>Đơn mới ${orderId(r.num)}</b>\n${r.cus||""} — ${itemCount} món\n${summary}${TG_LINK}`);
             }
           }
         } else if (p.eventType === "UPDATE") {
@@ -5489,7 +5492,7 @@ function App(){
             // v1.8: Telegram — leader gửi cho tất cả shipper + trưởng ca
             if (TG.isOn() && TG.isLeader(currentUserRef.current?.id, onlineUsersRef.current||[])) {
               tgBroadcast(["shipper","truong_ca","admin"],
-                `📦 <b>Đơn cần shipper ${orderId(r.num)}</b>\n${r.cus||""} — ${r.adr||""}\n💰 ${fmt(dbTot(r))} · phí ship ${fmt(r.d_fee||r.dFee||0)}\n👉 Mở app để nhận`);
+                `📦 <b>Đơn cần shipper ${orderId(r.num)}</b>\n${r.cus||""} — ${r.adr||""}\n💰 ${fmt(dbTot(r))} · phí ship ${fmt(r.d_fee||r.dFee||0)}\n👉 Mở app để nhận${TG_LINK}`);
             }
           }
           // Shipper bị gán đơn (sid thay đổi sang chính họ) → báo riêng cho shipper đó
@@ -5502,7 +5505,7 @@ function App(){
             const sh = (staffRef.current||[]).find(s=>s.id===r.sid);
             if (sh?.telegram_chat_id) {
               TG.send(sh.telegram_chat_id,
-                `🛵 <b>Bạn vừa được giao đơn ${orderId(r.num)}</b>\n${r.cus||""}\n📍 ${r.adr||"(tại chỗ)"}\n💰 ${fmt(dbTot(r))}`);
+                `🛵 <b>Bạn vừa được giao đơn ${orderId(r.num)}</b>\n${r.cus||""}\n📍 ${r.adr||"(tại chỗ)"}\n💰 ${fmt(dbTot(r))}${TG_LINK}`);
             }
           }
         }

@@ -6,6 +6,18 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.16.2] — 2026-06-05 (+07)
+
+### Added
+- **Link web trong tin nhắn Telegram:** mọi noti Telegram (ping shipper, đơn khách chờ duyệt, đơn mới,
+  đơn cần shipper, DM giao đơn, tin Test) thêm dòng **🔗 Mở BaBayBite** (`<a href>`) → bấm mở app ngay.
+
+## [1.16.1] — 2026-06-05 (+07)
+
+### Fixed
+- **Thông báo đơn kẹt cố định:** overlay `NotifFlash` animate xong dừng ở opacity 1 → hiển thị vĩnh viễn.
+  Sửa: animation fade-out hẳn trong 5s + auto-clear state sau 5s (gỡ khỏi DOM).
+
 ## [1.16.0] — 2026-06-05 (+07)
 
 📊 **Chuyển KPI/chi phí Shipper sang Báo cáo**
