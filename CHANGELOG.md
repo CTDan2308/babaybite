@@ -27,6 +27,10 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 ### Changed
 - **Tối ưu UI Trực đơn:** thêm **ô tìm kiếm** (mã đơn / khách / SĐT) + **chip lọc theo trạng thái** cho
   "Đơn đang xử lý" → giảm sót/sai đơn khi số lượng lớn. Mục **Đặt trước** giữ tách riêng, sắp gần→xa.
+- **Gộp SQL về 1 file duy nhất:** hợp nhất `supabase-50-accounts.sql` (demo) + `supabase-members-37ftu.sql`
+  (40 thành viên thật + owner) vào `supabase-schema.sql`. Seed thành viên thật chỉ nạp khi `staff` trống
+  (re-run an toàn). Sửa bug seed `shift_assignments` còn đọc cột `role` (đã bị bỏ ở v1.12) → dùng `'truc_don'`.
+  Xoá 2 file SQL thừa.
 
 ---
 

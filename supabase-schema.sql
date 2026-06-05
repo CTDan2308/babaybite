@@ -1,8 +1,12 @@
 -- ═══════════════════════════════════════════════════════════════
--- CLB QUẢN LÝ BÁN HÀNG — SUPABASE SCHEMA
+-- BaBayBite — SUPABASE SCHEMA (FILE SQL DUY NHẤT)
 -- ═══════════════════════════════════════════════════════════════
--- Cách dùng: Vào Supabase Dashboard → SQL Editor → paste toàn bộ file này → Run.
--- File này có thể chạy lại nhiều lần an toàn (idempotent).
+-- Gộp toàn bộ: tables + RLS + realtime + migrations + seed data
+-- (sản phẩm, zones, ca, danh mục) + DANH SÁCH THÀNH VIÊN THẬT CLB 37FTU.
+--
+-- Cách dùng: Supabase Dashboard → SQL Editor → paste TOÀN BỘ file này → Run.
+-- Idempotent — chạy lại nhiều lần an toàn (seed chỉ nạp khi bảng trống,
+-- KHÔNG ghi đè dữ liệu/sửa đổi đã có trong app).
 -- ═══════════════════════════════════════════════════════════════
 
 -- ═══════════════════════════════════════
@@ -221,15 +225,58 @@ ALTER TABLE shift_assignments REPLICA IDENTITY FULL;
 -- 4. SEED DATA (chỉ nạp lần đầu, tránh trùng)
 -- ═══════════════════════════════════════
 
+-- Thành viên thật CLB 37FTU 25-26 (chỉ nạp khi staff trống — re-run an toàn, không ghi đè sửa đổi trong app).
+--   • username = 2 từ cuối viết liền không dấu (trùng → 3 từ cuối)
+--   • pin = ddmm ngày sinh · '0000' nếu thiếu ngày sinh (⚠ cần cập nhật)
+--   • is_admin = TRUE cho 7 admin chỉ định + tài khoản chủ sở hữu (id 101)
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM staff) THEN
-    INSERT INTO staff (id,name,is_admin,checkin,active,pin,username) VALUES
-      (1,'Hoàng Khánh',true, '07:45',true,'1111','khanh'),
-      (2,'Nguyễn Hà',  false,'07:55',true,'2222','ha'),
-      (3,'Trần Minh',  false,'08:00',true,'3333','minh'),
-      (4,'Lê Ngọc',    false,'08:02',true,'4444','ngoc'),
-      (5,'Phạm Tuấn',  false,'08:10',true,'5555','tuan'),
-      (6,'Vũ Linh',    false,'08:15',true,'6666','linh');
+    INSERT INTO staff (id, name, is_admin, checkin, active, pin, username) VALUES
+      -- ── Truyền thông ──
+      (  1, 'Phạm Quang Chính', true , NULL, true, '2409', 'quangchinh'),
+      (  2, 'Trần Bảo Châu', false, NULL, true, '1104', 'baochau'),
+      (  3, 'Nguyễn Thị Quỳnh Trang', false, NULL, true, '0000', 'quynhtrang'),  -- ⚠ thiếu ngày sinh
+      (  4, 'Trần Huyền Trang', false, NULL, true, '2211', 'huyentrang'),
+      (  5, 'Trần Quỳnh Anh', false, NULL, true, '1810', 'quynhanh'),
+      (  6, 'Nguyễn Thị Chung', false, NULL, true, '0601', 'thichung'),
+      (  7, 'Thái Thị Mỹ Tâm', false, NULL, true, '1105', 'mytam'),
+      (  8, 'Phan Quỳnh Mai', false, NULL, true, '1301', 'quynhmai'),
+      (  9, 'Lê Quỳnh Chi', false, NULL, true, '2010', 'quynhchi'),
+      ( 10, 'Đinh Hà Vy', false, NULL, true, '2408', 'havy'),
+      ( 11, 'Nguyễn Lâm Huy', false, NULL, true, '0502', 'lamhuy'),
+      ( 12, 'Nguyễn Thị Châu Anh', false, NULL, true, '1007', 'chauanh'),
+      ( 13, 'Hồ Khánh Huyền', false, NULL, true, '3007', 'khanhhuyen'),
+      -- ── Tổ chức ──
+      ( 14, 'Trần Bùi Mai Uyên', false, NULL, true, '3107', 'maiuyen'),
+      ( 15, 'Lê Trần Hồng Thắm', false, NULL, true, '2201', 'hongtham'),
+      ( 16, 'Nguyễn Sáng', true , NULL, true, '1107', 'nguyensang'),
+      ( 17, 'Nguyễn Phan Văn Trường', false, NULL, true, '0000', 'vantruong'),  -- ⚠ thiếu ngày sinh
+      ( 18, 'Cao Thị Thanh Huyền', false, NULL, true, '0901', 'thanhhuyen'),
+      ( 19, 'Nguyễn Mạnh Hiển', true , NULL, true, '0808', 'manhhien'),
+      ( 20, 'Nguyễn Thị Ngọc Trâm', false, NULL, true, '2812', 'ngoctram'),
+      ( 21, 'Lang Thị Thùy Dương', true , NULL, true, '2811', 'thuyduong'),
+      ( 22, 'Trần Thị Minh', false, NULL, true, '0611', 'thiminh'),
+      ( 23, 'Trần Thị Cẩm', false, NULL, true, '1201', 'thicam'),
+      ( 24, 'Hoàng Minh Khang', false, NULL, true, '2310', 'minhkhang'),
+      ( 25, 'Hồ Thị Tuyết Nhi', false, NULL, true, '1511', 'tuyetnhi'),
+      ( 26, 'Nguyễn Thị Huyền Trang', false, NULL, true, '2911', 'thihuyentrang'),
+      ( 27, 'Phạm Trà My', false, NULL, true, '0602', 'tramy'),
+      ( 28, 'Hoàng Tuấn Anh', false, NULL, true, '0703', 'tuananh'),
+      ( 29, 'Nguyễn Kim Sơn', false, NULL, true, '1710', 'kimson'),
+      -- ── Đối ngoại ──
+      ( 30, 'Trịnh Thị Lan Anh', false, NULL, true, '0908', 'lananh'),
+      ( 31, 'Nguyễn Trọng Hiệp', false, NULL, true, '1212', 'tronghiep'),
+      ( 32, 'Hà Lê Quỳnh Anh', true , NULL, true, '1310', 'lequynhanh'),
+      ( 33, 'Lâm Mai Vi', false, NULL, true, '0601', 'maivi'),
+      ( 34, 'Trần Thị Thuỳ Linh', false, NULL, true, '0508', 'thuylinh'),
+      ( 35, 'Trương Thị Ánh Trăng', false, NULL, true, '0804', 'anhtrang'),
+      ( 36, 'Nguyễn Thị Diệu Linh', true , NULL, true, '1612', 'dieulinh'),
+      ( 37, 'Nguyễn Vân Thư', false, NULL, true, '1810', 'vanthu'),
+      ( 38, 'Mai Ánh Minh', false, NULL, true, '2712', 'anhminh'),
+      ( 39, 'Nguyễn Lê Dạ Thảo', true , NULL, true, '2412', 'dathao'),
+      ( 40, 'Tạ Quốc Phú', false, NULL, true, '2610', 'quocphu'),
+      -- ── Chủ sở hữu (giữ quyền đăng nhập) — đổi tên/pin theo ý bạn ──
+      (101, 'Lê Văn Trí', true , NULL, true, '1001', 'tri');
   END IF;
 END $$;
 
@@ -295,10 +342,12 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- Seed assignments: tất cả staff đều làm role mặc định trong Ca 1
+-- Seed assignments: gán mọi thành viên đang hoạt động vào Ca 1 với vai trò 'truc_don'
+-- (vai trò theo ca — admin chỉnh lại trong app: Cài đặt → Lịch ca & Phân công).
+-- v1.12: staff.role đã bị bỏ → KHÔNG đọc cột role nữa, dùng giá trị mặc định.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM shift_assignments) THEN
     INSERT INTO shift_assignments (shift_id, staff_id, role)
-    SELECT 1, id, role FROM staff WHERE active = true;
+    SELECT 1, id, 'truc_don' FROM staff WHERE active = true;
   END IF;
 END $$;
