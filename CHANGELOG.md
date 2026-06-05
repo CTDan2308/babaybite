@@ -6,6 +6,34 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.12.0] — 2026-06-05 (+07)
+
+🗑️ **Bỏ vai trò cố định — `staff.role` → `staff.is_admin` (bool)**
+
+### ⚠️ CẦN CHẠY MIGRATION
+Vào **Supabase → SQL Editor**, chạy:
+```sql
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staff' AND column_name='role') THEN
+    UPDATE staff SET is_admin = (role = 'admin');
+    ALTER TABLE staff DROP COLUMN role;
+  END IF;
+END $$;
+```
+(Đã có sẵn trong `supabase-schema.sql`.) FE chạy đúng **dù migration trước hay sau**: cờ `ROLE_COL_OK`/`ADMIN_COL_OK`
+tự phát hiện cột — chưa drop thì vẫn ghi `role` để backward-compat, không 400.
+
+### Changed
+- **Xoá cột `role`**, thay bằng `is_admin` (bool). Object staff ở FE mang `isAdmin`; map qua `staffFromDb/staffToDb`.
+- Nhận diện **Admin** qua `is_admin` (fallback legacy `role='admin'` khi chưa migrate).
+- **Nhân sự (Cài đặt):** ô "Vai trò" → công tắc **"Là Admin / Thành viên"**; bảng hiển thị cột **Quyền**.
+- Vai trò làm việc của thành viên tính **100% theo phân ca** (`shift_assignments`); ngoài ca ⇒ màn Nghỉ.
+- Script `supabase-50-accounts.sql` + seed cập nhật sang `is_admin`.
+
+---
+
 ## [1.11.0] — 2026-06-05 (+07)
 
 🔀 **Role theo ca · Điểm lấy hàng · Admin chạy như Thành viên**

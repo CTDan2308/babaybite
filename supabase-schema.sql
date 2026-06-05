@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS staff (
   id         BIGINT PRIMARY KEY,
   name       TEXT NOT NULL,
-  role       TEXT NOT NULL CHECK (role IN ('truong_ca','truc_don','pha_che','shipper','admin')),
+  is_admin   BOOLEAN NOT NULL DEFAULT FALSE,   -- v1.12: thay role cố định; vai trò làm việc lấy theo phân ca
   checkin    TEXT,
   active     BOOLEAN NOT NULL DEFAULT TRUE,
   pin        TEXT,
@@ -39,6 +39,17 @@ ALTER TABLE staff ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT;
 -- Big Update: BOT_TOKEN Telegram lưu ở các tài khoản admin → app tự nạp cho mọi máy.
 -- ⚠ Bảo mật: token đọc được bằng anon key (RLS open) — chỉ dùng cho bot nội bộ.
 ALTER TABLE staff ADD COLUMN IF NOT EXISTS tg_token TEXT;
+
+-- v1.12: BỎ VAI TRÒ CỐ ĐỊNH — thay staff.role bằng staff.is_admin (bool).
+-- Vai trò làm việc của thành viên tính 100% theo phân ca (shift_assignments).
+ALTER TABLE staff ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE;
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='staff' AND column_name='role') THEN
+    UPDATE staff SET is_admin = (role = 'admin');   -- chuyển admin cũ sang cờ mới
+    ALTER TABLE staff DROP COLUMN role;             -- drop hẳn cột role
+  END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS staff_username_uniq ON staff(LOWER(username)) WHERE username IS NOT NULL AND username <> '';
 
 CREATE TABLE IF NOT EXISTS orders (
@@ -198,13 +209,13 @@ ALTER TABLE shift_assignments REPLICA IDENTITY FULL;
 
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM staff) THEN
-    INSERT INTO staff (id,name,role,checkin,active,pin,username) VALUES
-      (1,'Hoàng Khánh','truong_ca','07:45',true,'1111','khanh'),
-      (2,'Nguyễn Hà',  'truc_don', '07:55',true,'2222','ha'),
-      (3,'Trần Minh',  'pha_che',  '08:00',true,'3333','minh'),
-      (4,'Lê Ngọc',    'pha_che',  '08:02',true,'4444','ngoc'),
-      (5,'Phạm Tuấn',  'shipper',  '08:10',true,'5555','tuan'),
-      (6,'Vũ Linh',    'shipper',  '08:15',true,'6666','linh');
+    INSERT INTO staff (id,name,is_admin,checkin,active,pin,username) VALUES
+      (1,'Hoàng Khánh',true, '07:45',true,'1111','khanh'),
+      (2,'Nguyễn Hà',  false,'07:55',true,'2222','ha'),
+      (3,'Trần Minh',  false,'08:00',true,'3333','minh'),
+      (4,'Lê Ngọc',    false,'08:02',true,'4444','ngoc'),
+      (5,'Phạm Tuấn',  false,'08:10',true,'5555','tuan'),
+      (6,'Vũ Linh',    false,'08:15',true,'6666','linh');
   END IF;
 END $$;
 

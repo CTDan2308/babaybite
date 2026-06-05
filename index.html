@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.11.0</title>
+<title>BaBayBite v1.12.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -144,6 +144,13 @@ let SCHED_DATE_OK = true;
 /* Big Update: cờ — DB đã có cột staff.tg_token chưa? (lưu BOT_TOKEN Telegram ở các acc admin để sync mọi máy)
    Chưa migrate → KHÔNG ghi tg_token (tránh 400). Token vẫn dùng được dạng localStorage từng máy. */
 let TG_DB_OK = false;
+/* v1.12: bỏ vai trò cố định — staff.role thay bằng staff.is_admin (bool).
+   2 cờ cho phép FE chạy đúng dù migration chạy TRƯỚC hay SAU (không 400):
+   - ROLE_COL_OK: DB còn cột staff.role không (chưa drop) → vẫn ghi role để backward-compat
+   - ADMIN_COL_OK: DB đã có cột staff.is_admin chưa → ghi is_admin
+   FE luôn dùng field camel `isAdmin` (bool) trên object staff, map qua staffFromDb/staffToDb. */
+let ROLE_COL_OK = true;
+let ADMIN_COL_OK = false;
 /* v1.11: điểm lấy hàng (pickup_locations). 2 cờ phát hiện migration:
    - PICKUP_DB_OK: đã có BẢNG pickup_locations chưa (để bật tab quản lý + dropdown)
    - ORDER_PICKUP_OK: đã có CỘT orders.pickup_id chưa (để KHÔNG ghi cột này tránh 400 vỡ tạo đơn)
@@ -155,6 +162,20 @@ let PICKUP_LOCS = [];
 const pickupName = id => { const p = PICKUP_LOCS.find(x=>x.id===id); return p ? p.name : ""; };
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
 const productToDb   = p => ({id:p.id,name:p.name,cat:p.cat,price:p.price,stock:p.stock,on_menu:p.on!==false,emoji:p.emoji,recipe:p.recipe});
+/* v1.12: staff — isAdmin (bool) thay role. Đọc từ is_admin nếu có, fallback legacy role==="admin". */
+const staffFromDb = r => ({
+  id:r.id, name:r.name, username:r.username, pin:r.pin, active:r.active, checkin:r.checkin,
+  telegram_chat_id:r.telegram_chat_id,
+  ...(('tg_token' in r)?{tg_token:r.tg_token}:{}),
+  isAdmin: ADMIN_COL_OK ? (r.is_admin===true) : (r.role==="admin"),
+});
+const staffToDb = s => ({
+  id:s.id, name:s.name, username:s.username, pin:s.pin, active:s.active, checkin:s.checkin,
+  telegram_chat_id:(s.telegram_chat_id??null),
+  ...(TG_DB_OK?{tg_token:(s.tg_token??null)}:{}),
+  ...(ROLE_COL_OK?{role:(s.isAdmin?"admin":"truc_don")}:{}), // backward-compat khi chưa drop cột role
+  ...(ADMIN_COL_OK?{is_admin:(s.isAdmin===true)}:{}),
+});
 const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",pickupId:(r.pickup_id??null),createdAt:r.created_at||""});
 const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null, ...(SCHED_DATE_OK?{schedule_date:o.schD||null}:{}), ...(ORDER_PICKUP_OK?{pickup_id:(o.pickupId??null)}:{})});
 const shiftFromDb   = r => ({name:r.name,start:r.start_at,end:r.end_at});
@@ -187,12 +208,12 @@ const P0 = [
 ];
 
 const S0 = [
-  {id:1,name:"Hoàng Khánh",role:"truong_ca",checkin:"07:45",active:true,pin:"1111"},
-  {id:2,name:"Nguyễn Hà",  role:"truc_don", checkin:"07:55",active:true,pin:"2222"},
-  {id:3,name:"Trần Minh",  role:"pha_che",  checkin:"08:00",active:true,pin:"3333"},
-  {id:4,name:"Lê Ngọc",    role:"pha_che",  checkin:"08:02",active:true,pin:"4444"},
-  {id:5,name:"Phạm Tuấn",  role:"shipper",  checkin:"08:10",active:true,pin:"5555"},
-  {id:6,name:"Vũ Linh",    role:"shipper",  checkin:"08:15",active:true,pin:"6666"},
+  {id:1,name:"Hoàng Khánh",isAdmin:true, checkin:"07:45",active:true,pin:"1111"},
+  {id:2,name:"Nguyễn Hà",  isAdmin:false,checkin:"07:55",active:true,pin:"2222"},
+  {id:3,name:"Trần Minh",  isAdmin:false,checkin:"08:00",active:true,pin:"3333"},
+  {id:4,name:"Lê Ngọc",    isAdmin:false,checkin:"08:02",active:true,pin:"4444"},
+  {id:5,name:"Phạm Tuấn",  isAdmin:false,checkin:"08:10",active:true,pin:"5555"},
+  {id:6,name:"Vũ Linh",    isAdmin:false,checkin:"08:15",active:true,pin:"6666"},
 ];
 
 const O0 = [
@@ -242,8 +263,8 @@ const RC = {
   off:      ["#94A3B8","#F1F5F9"],
 };
 /* v1.7: helper — role THỰC TẾ trong 1 ca cụ thể (admin luôn admin) */
-const roleInShift = (staffId, staffRole, shiftId, shiftAssignments) => {
-  if (staffRole === "admin") return "admin";
+const roleInShift = (staffId, staffIsAdmin, shiftId, shiftAssignments) => {
+  if (staffIsAdmin === true) return "admin";
   if (!shiftId) return "off";
   const a = shiftAssignments.find(x => x.shift_id===shiftId && x.staff_id===staffId);
   return a ? a.role : "off";
@@ -259,7 +280,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.11.0";
+const VERSION = "1.12.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -284,7 +305,7 @@ const getCurrentShift = (shifts) => {
    adminAsMember=true ⇒ admin tạm chạy như thành viên (theo ca được phân, nếu có). */
 const getEffectiveRole = (currentShift, shiftAssignments, user, adminAsMember=false) => {
   if (!user) return null;
-  if (user.role === "admin" && !adminAsMember) return "admin";
+  if (user.isAdmin === true && !adminAsMember) return "admin";
   if (!currentShift) return "off";
   const a = shiftAssignments.find(x => x.shift_id===currentShift.id && x.staff_id===user.id);
   return a ? a.role : "off";
@@ -823,9 +844,9 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
     {k:"settings", icon:"ti-settings",        label:"Cài đặt"},
   ];
   const nav = navAll.filter(n=>allowed.includes(n.k));
-  const er = effectiveRole || currentUser.role;
+  const er = effectiveRole || "off";
   const [tc,bg] = RC[er]||["#475569","#f5f5f5"];
-  const roleSwitched = er !== currentUser.role && er !== "admin";
+  const roleSwitched = currentUser.isAdmin && er !== "admin"; // admin đang xem như thành viên
   return (
     <div className={"sidebar "+(sbOpen?"open":"")} style={{background:"#fff",borderRight:"1px solid var(--bd)",display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{padding:"16px 16px 13px",borderBottom:"1px solid var(--bd2)",display:"flex",alignItems:"center",justifyContent:"space-between",background:"linear-gradient(135deg,#fff 0%,#FFFAF7 100%)"}}>
@@ -844,7 +865,7 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
           <div style={{fontSize:13,color:"var(--text)",fontWeight:700,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{currentUser.name}</div>
           <div style={{fontSize:10.5,color:tc,fontWeight:700,display:"flex",alignItems:"center",gap:4}}>
             <span>{RL[er]||er}</span>
-            {roleSwitched && <span title={`Mặc định: ${RL[currentUser.role]}`} style={{fontSize:9,padding:"1px 6px",background:"#fff",borderRadius:"var(--r-pill)",color:"var(--or)",fontWeight:800}}>theo ca</span>}
+            {roleSwitched && <span title="Admin đang xem như thành viên" style={{fontSize:9,padding:"1px 6px",background:"#fff",borderRadius:"var(--r-pill)",color:"var(--or)",fontWeight:800}}>chế độ TV</span>}
           </div>
         </div>
       </div>
@@ -907,7 +928,7 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
 }
 
 function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effectiveRole,currentShift,notifEnabled,onToggleNotif}){
-  const er = effectiveRole || currentUser.role;
+  const er = effectiveRole || "off";
   const [tc,bg] = RC[er]||["#475569","#f5f5f5"];
   const conn = {
     live:    {color:"#22c55e",text:"Realtime",pulse:true},
@@ -956,7 +977,7 @@ function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effective
    DASHBOARD
 ══════════════════════════════════════════════════════════ */
 function Dashboard({orders:allOrders,staff,currentUser,deleteOrder,viewDate,setViewDate}){
-  const isAdmin = currentUser?.role === "admin";
+  const isAdmin = currentUser?.isAdmin === true;
   // v1.9.5: lọc theo ngày đang xem (quản trị theo ngày)
   const orders = allOrders.filter(o=>orderDay(o)===viewDate);
   const done  = orders.filter(o=>o.st==="hoan_thanh");
@@ -1114,7 +1135,7 @@ function StaffCombo({staffList,onPick,placeholder="+ Thêm nhân sự...",accent
         <div style={{position:"absolute",top:"calc(100% + 3px)",left:0,right:0,minWidth:160,background:"#fff",border:"1px solid var(--bd)",borderRadius:6,boxShadow:"var(--sh-lg)",zIndex:60,maxHeight:220,overflowY:"auto"}}>
           {filtered.length===0 && <div style={{padding:10,color:"var(--mut)",fontSize:11,textAlign:"center"}}>Không tìm thấy</div>}
           {filtered.map(s=>{
-            const [tc,bg]=RC[s.role]||["#475569","#f5f5f5"];
+            const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
             return (
               <div key={s.id} onClick={()=>{onPick(s.id); setOpen(false); setQ("");}}
                 style={{padding:"7px 9px",cursor:"pointer",display:"flex",alignItems:"center",gap:7,fontSize:11.5,borderBottom:"1px solid var(--bd2)"}}
@@ -1123,7 +1144,7 @@ function StaffCombo({staffList,onPick,placeholder="+ Thêm nhân sự...",accent
                 <div style={{width:22,height:22,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</div>
-                  <div style={{fontSize:9.5,color:tc,fontWeight:600}}>{RL[s.role]||s.role}</div>
+                  <div style={{fontSize:9.5,color:tc,fontWeight:600}}>{(s.isAdmin?"Admin":"Thành viên")}</div>
                 </div>
               </div>
             );
@@ -1179,7 +1200,7 @@ function KpiPicker({staff,value,onChange,inShiftIds,inp}){
                   style={{padding:"8px 10px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",fontSize:12,borderBottom:"1px solid var(--bd2)",background:s.id===value?"var(--orl)":"#fff"}}
                   onMouseEnter={e=>{if(s.id!==value)e.currentTarget.style.background="#FAFAFA"}}
                   onMouseLeave={e=>{if(s.id!==value)e.currentTarget.style.background="#fff"}}>
-                  <span><b>{s.name}</b> <small style={{color:"var(--mut)"}}>· {RL[s.role]}</small></span>
+                  <span><b>{s.name}</b>{s.isAdmin && <small style={{color:"var(--mut)"}}> · Admin</small>}</span>
                   {out && <span style={{fontSize:9,padding:"1px 6px",background:"#FEF2F2",color:"#DC2626",borderRadius:"var(--r-pill)",fontWeight:700}}>ngoài ca</span>}
                 </div>
               );
@@ -1420,8 +1441,8 @@ function EditOrderModal({order,products,categories,zones,pickupLocs=[],staff,cur
 }
 
 function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,effectiveRole,zones,pickupLocs=[],categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
-  const isAdmin = currentUser?.role === "admin";
-  const erole = effectiveRole || currentUser?.role;
+  const isAdmin = currentUser?.isAdmin === true;
+  const erole = effectiveRole || currentUser?.isAdmin && "admin" || "off";
   const canEditOrder = ["truong_ca","truc_don","admin"].includes(erole);
   const [editId,setEditId] = useState(null);
   const [cancelId,setCancelId] = useState(null);
@@ -2741,14 +2762,14 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
   const canAssign   = effectiveRole==="truong_ca" || effectiveRole==="admin" || effectiveRole==="truc_don";
 
   const ship    = orders.filter(o=>o.type==="ship");
-  // v1.9.1: shipper ĐANG TRONG CA HOẠT ĐỘNG (theo shift_assignments, fallback role mặc định nếu chưa có ca)
+  // v1.12: shipper = người được phân vai "shipper" trong ca hiện tại (role theo ca, không còn role cố định)
   const shippers = currentShift
     ? staff.filter(s=>{
         if (!s.active) return false;
         const a = shiftAssignments.find(x=>x.shift_id===currentShift.id && x.staff_id===s.id);
         return a ? a.role==="shipper" : false;
       })
-    : staff.filter(s=>s.role==="shipper" && s.active);
+    : [];
 
   const setSt = (oid,patch,msg,type="success") => {
     setOrders(os=>os.map(o=>o.id===oid?{...o,...patch}:o));
@@ -3112,7 +3133,7 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
     return {cnt:mine.length,rev:mine.reduce((s,o)=>s+iTot(o),0)};
   };
   // v1.7: role thực tế trong ca hiện tại
-  const shiftRole = s => roleInShift(s.id, s.role, currentShift?.id, shiftAssignments);
+  const shiftRole = s => roleInShift(s.id, s.isAdmin, currentShift?.id, shiftAssignments);
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
       <DateNav date={viewDate} setDate={setViewDate} countLabel={`KPI tính theo đơn HOÀN THÀNH trong ngày · ${dayOrders.filter(o=>o.st==="hoan_thanh").length} đơn xong`}/>
@@ -3148,7 +3169,7 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
               const off = sr === "off";
               const [tc,bg] = off ? ["#64748B","#F1F5F9"] : (RC[sr]||["#475569","#f5f5f5"]);
               const k=kpi(s.id);
-              const switched = !off && sr !== s.role && s.role !== "admin";
+              const switched = !off && s.isAdmin && sr !== "admin"; // admin đang làm vai trò theo ca
               return (
                 <tr key={s.id} style={{borderBottom:"1px solid #f8f8f8",opacity:s.active && !off ? 1 : .55}}>
                   <td style={{padding:"9px 8px"}}>
@@ -3159,11 +3180,11 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
                   </td>
                   <td style={{padding:"9px 8px"}}>
                     {off ? (
-                      <span title={`Mặc định: ${RL[s.role]||s.role}`} style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:"#F1F5F9",color:"#64748B",fontWeight:700,fontStyle:"italic"}}>Ngoài ca</span>
+                      <span title={`Mặc định: ${(s.isAdmin?"Admin":"Thành viên")}`} style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:"#F1F5F9",color:"#64748B",fontWeight:700,fontStyle:"italic"}}>Ngoài ca</span>
                     ) : (
                       <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
                         <span style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:bg,color:tc,fontWeight:700}}>{RL[sr]}</span>
-                        {switched && <span title={`Mặc định: ${RL[s.role]||s.role}`} style={{fontSize:9,padding:"1px 5px",borderRadius:"var(--r-pill)",background:"#FFF4F0",color:"var(--or)",fontWeight:800}}>theo ca</span>}
+                        {switched && <span title={`Mặc định: ${(s.isAdmin?"Admin":"Thành viên")}`} style={{fontSize:9,padding:"1px 5px",borderRadius:"var(--r-pill)",background:"#FFF4F0",color:"var(--or)",fontWeight:800}}>theo ca</span>}
                       </span>
                     )}
                   </td>
@@ -3260,7 +3281,7 @@ function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setV
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
           <div>
             <div style={{fontSize:14,fontWeight:800,color:"#212121"}}>Báo cáo ngày {isoToVN(viewDate)} {viewDate===todayISO()?`· ${shift.name}`:""}</div>
-            <div style={{fontSize:11,color:"#767676"}}>{isoWeekday(viewDate)} · Trưởng ca: {staff.find(s=>s.role==="truong_ca"&&s.active)?.name||"—"}</div>
+            <div style={{fontSize:11,color:"#767676"}}>{isoWeekday(viewDate)} · Trưởng ca: {(()=>{const a=shiftAssignments.find(x=>x.shift_id===currentShift?.id&&x.role==="truong_ca");return a?(staff.find(s=>s.id===a.staff_id)?.name||"—"):"—";})()}</div>
           </div>
           <button onClick={exportCSV} className="btn-pri" style={{display:"flex",alignItems:"center",gap:6,padding:"9px 18px",borderRadius:8,fontSize:12}}>
             <i className="ti ti-download"/>Xuất CSV
@@ -3334,7 +3355,7 @@ function TelegramSettings({staff,setStaff,toast}){
       toast("⚠ Chưa có cột tg_token — token mới chỉ lưu máy này. Chạy migration (xem hướng dẫn) để lưu cho mọi máy admin.","warn");
       return;
     }
-    setStaff(ss=>ss.map(s=>s.role==="admin"?{...s,tg_token:t||null}:s));
+    setStaff(ss=>ss.map(s=>s.isAdmin?{...s,tg_token:t||null}:s));
     toast(t?"✓ Đã lưu token cho tất cả tài khoản Admin":"✓ Đã xoá token khỏi tài khoản Admin","success");
   };
 
@@ -3783,8 +3804,8 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                               ) : (
                                 <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
                                   {availableStaff.map(s=>{
-                                    const [tc,bg]=RC[s.role]||["#475569","#f5f5f5"];
-                                    const isDefault = s.role===roleOpt.v;
+                                    const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
+                                    const isDefault = false; // v1.12: bỏ role mặc định
                                     return (
                                       <button key={s.id} onClick={()=>{upsertAssignment(sh.id,s.id,roleOpt.v); setRoleAddFor(null);}}
                                         title={isDefault?"Role mặc định khớp":""}
@@ -3892,7 +3913,7 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                         </div>
                         <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:200,overflowY:"auto"}}>
                           {unassigned.map(s=>{
-                            const [tc,bg]=RC[s.role]||["#475569","#f5f5f5"];
+                            const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
                             return (
                               <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 6px",background:"#fff",borderRadius:5}}>
                                 <div style={{width:24,height:24,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
@@ -3954,7 +3975,7 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
               </thead>
               <tbody>
                 {staff.filter(s=>s.active).map(s=>{
-                  const [tc,bg]=RC[s.role]||["#475569","#f5f5f5"];
+                  const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
                   return (
                     <tr key={s.id} style={{borderBottom:"1px solid #f8f8f8"}}>
                       <td style={{padding:"9px 8px",position:"sticky",left:0,background:"#fff",zIndex:1}}>
@@ -3962,7 +3983,7 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                           <div style={{width:28,height:28,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>{inits(s.name)}</div>
                           <div>
                             <div style={{fontSize:12,fontWeight:700,color:"#212121"}}>{s.name}</div>
-                            <div style={{fontSize:9.5,color:tc,fontWeight:600}}>Mặc định: {RL[s.role]}</div>
+                            <div style={{fontSize:9.5,color:tc,fontWeight:600}}>{s.isAdmin?"Admin":"Thành viên"}</div>
                           </div>
                         </div>
                       </td>
@@ -4131,7 +4152,7 @@ function CategorySettings({categories,setCategories,products,toast}){
 function StaffSettings({staff,setStaff,currentUser,toast}){
   const [adding,setAdding] = useState(false);
   const [editing,setEditing] = useState(null);
-  const [form,setForm] = useState({name:"",username:"",role:"truc_don",pin:"",telegram_chat_id:""});
+  const [form,setForm] = useState({name:"",username:"",isAdmin:false,pin:"",telegram_chat_id:""});
 
   const submit=()=>{
     if(!form.name.trim()){toast("Vui lòng nhập họ tên","warn");return;}
@@ -4142,16 +4163,16 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
     if(!/^\d{4}$/.test(form.pin)){toast("PIN phải là 4 chữ số","warn");return;}
     if(staff.some(s=>s.pin===form.pin&&s.id!==editing?.id)){toast("PIN trùng với người khác","warn");return;}
     if(editing){
-      setStaff(ss=>ss.map(s=>s.id===editing.id?{...s,name:form.name.trim(),username:uname,role:form.role,pin:form.pin,telegram_chat_id:form.telegram_chat_id.trim()||null}:s));
+      setStaff(ss=>ss.map(s=>s.id===editing.id?{...s,name:form.name.trim(),username:uname,isAdmin:!!form.isAdmin,pin:form.pin,telegram_chat_id:form.telegram_chat_id.trim()||null}:s));
       toast("Đã cập nhật","success");
       setEditing(null);
     }else{
       const id=Math.max(0,...staff.map(s=>s.id))+1;
-      setStaff(ss=>[...ss,{id,name:form.name.trim(),username:uname,role:form.role,checkin:nowS(),active:true,pin:form.pin,telegram_chat_id:form.telegram_chat_id.trim()||null}]);
+      setStaff(ss=>[...ss,{id,name:form.name.trim(),username:uname,isAdmin:!!form.isAdmin,checkin:nowS(),active:true,pin:form.pin,telegram_chat_id:form.telegram_chat_id.trim()||null}]);
       toast("Đã thêm thành viên","success");
       setAdding(false);
     }
-    setForm({name:"",username:"",role:"truc_don",pin:"",telegram_chat_id:""});
+    setForm({name:"",username:"",isAdmin:false,pin:"",telegram_chat_id:""});
   };
 
   const remove=s=>{
@@ -4163,7 +4184,7 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
 
   const startEdit=s=>{
     setEditing(s); setAdding(false);
-    setForm({name:s.name,username:s.username||"",role:s.role,pin:s.pin,telegram_chat_id:s.telegram_chat_id||""});
+    setForm({name:s.name,username:s.username||"",isAdmin:!!s.isAdmin,pin:s.pin,telegram_chat_id:s.telegram_chat_id||""});
   };
 
   const toggleActive=s=>setStaff(ss=>ss.map(x=>x.id===s.id?{...x,active:!x.active}:x));
@@ -4178,7 +4199,7 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
       <div className="card" style={{padding:14,marginBottom:14}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
           <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>Danh sách thành viên ({staff.length})</div>
-          {!adding&&!editing&&<button onClick={()=>{setAdding(true);setForm({name:"",username:"",role:"truc_don",pin:"",telegram_chat_id:""});}}
+          {!adding&&!editing&&<button onClick={()=>{setAdding(true);setForm({name:"",username:"",isAdmin:false,pin:"",telegram_chat_id:""});}}
             className="btn-pri" style={{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",borderRadius:6,fontSize:12}}>
             <i className="ti ti-plus" style={{fontSize:14}}/>Thêm thành viên
           </button>}
@@ -4197,12 +4218,12 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
                 <input value={form.username} onChange={e=>setForm(f=>({...f,username:e.target.value.toLowerCase().replace(/[^a-z0-9_.-]/g,"")}))} placeholder="vd: vana" style={{width:"100%",padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12,fontFamily:"monospace"}}/>
               </div>
               <div>
-                <div style={{fontSize:10,color:"#767676",marginBottom:3,fontWeight:600}}>Vai trò mặc định</div>
-                <select value={form.role} onChange={e=>setForm(f=>({...f,role:e.target.value}))}
-                  style={{width:"100%",padding:"7px 10px",border:"1px solid var(--bd)",borderRadius:6,fontSize:12,background:"#fff",cursor:"pointer"}}>
-                  {Object.entries(RL).filter(([k])=>k!=="off").map(([k,l])=><option key={k} value={k}>{l}</option>)}
-                </select>
-                <div style={{fontSize:9.5,color:"#999",marginTop:3,lineHeight:1.4}}>Vai trò thực tế tính <b>theo phân ca</b>. Chọn <b>Admin</b> để cấp toàn quyền.</div>
+                <div style={{fontSize:10,color:"#767676",marginBottom:3,fontWeight:600}}>Quyền</div>
+                <button type="button" onClick={()=>setForm(f=>({...f,isAdmin:!f.isAdmin}))}
+                  style={{width:"100%",padding:"7px 10px",border:`1.5px solid ${form.isAdmin?"#7C3AED":"var(--bd)"}`,borderRadius:6,fontSize:12,background:form.isAdmin?"#F5F3FF":"#fff",color:form.isAdmin?"#6D28D9":"var(--text2)",cursor:"pointer",fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                  <i className={`ti ${form.isAdmin?"ti-shield-check":"ti-user"}`} style={{fontSize:14}}/>{form.isAdmin?"Admin":"Thành viên"}
+                </button>
+                <div style={{fontSize:9.5,color:"#999",marginTop:3,lineHeight:1.4}}>Vai trò làm việc tính <b>theo phân ca</b>. Bật <b>Admin</b> để cấp toàn quyền.</div>
               </div>
               <div>
                 <div style={{fontSize:10,color:"#767676",marginBottom:3,fontWeight:600}}>PIN (4 số)</div>
@@ -4226,13 +4247,13 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
         <div style={{overflowX:"auto"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
           <thead>
-            <tr>{["","Tên","Username","Vai trò","PIN","TG","Hoạt động","Thao tác"].map(h=>(
+            <tr>{["","Tên","Username","Quyền","PIN","TG","Hoạt động","Thao tác"].map(h=>(
               <th key={h} style={{padding:"8px",textAlign:"left",fontSize:10,color:"#999",fontWeight:700,borderBottom:"1px solid #f0f0f0",letterSpacing:".3px"}}>{h}</th>
             ))}</tr>
           </thead>
           <tbody>
             {staff.map(s=>{
-              const [tc,bg]=RC[s.role]||["#475569","#f5f5f5"];
+              const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
               return (
                 <tr key={s.id} style={{borderBottom:"1px solid #f8f8f8"}}>
                   <td style={{padding:"9px 8px"}}>
@@ -4242,7 +4263,7 @@ function StaffSettings({staff,setStaff,currentUser,toast}){
                     {s.name}{s.id===currentUser.id&&<span style={{fontSize:9,marginLeft:6,padding:"2px 6px",background:"#FFF4F0",color:"var(--or)",borderRadius:3,fontWeight:700}}>BẠN</span>}
                   </td>
                   <td style={{padding:"9px 8px",color:s.username?"#475569":"#cbd5e1",fontFamily:"monospace",fontSize:11}}>{s.username||<i style={{color:"#fca5a5"}}>chưa có</i>}</td>
-                  <td style={{padding:"9px 8px"}}><span style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:bg,color:tc,fontWeight:700}}>{RL[s.role]}</span></td>
+                  <td style={{padding:"9px 8px"}}><span style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:bg,color:tc,fontWeight:700}}>{s.isAdmin?"Admin":"Thành viên"}</span></td>
                   <td style={{padding:"9px 8px",fontFamily:"monospace",letterSpacing:"2px",color:"#767676"}}>••••</td>
                   <td style={{padding:"9px 8px",textAlign:"center"}} title={s.telegram_chat_id||"Chưa kết nối Telegram"}>
                     {s.telegram_chat_id
@@ -4606,8 +4627,8 @@ function App(){
     const sas = shiftAssignmentsRef.current||[];
     const recipients = (staffRef.current||[]).filter(s=>{
       if (!s.active || !s.telegram_chat_id) return false;
-      if (s.role === "admin" && roles.includes("admin")) return true;
-      if (!cs) return roles.includes(s.role);
+      if (s.isAdmin && roles.includes("admin")) return true;
+      if (!cs) return false; // role theo ca: ngoài ca không nhận broadcast (admin đã xử lý ở trên)
       const a = sas.find(x=>x.shift_id===cs.id && x.staff_id===s.id);
       const eff = a ? a.role : "off";
       return roles.includes(eff);
@@ -4666,7 +4687,7 @@ function App(){
     const next = typeof updater==="function" ? updater(prev) : updater;
     staffRef.current = next;
     _setStaff(next);
-    syncToDb(prev, next, "staff", "id", s=>s);
+    syncToDb(prev, next, "staff", "id", staffToDb);
   },[]);
   const setZones = useCallback(updater=>{
     const prev = zonesRef.current;
@@ -4763,11 +4784,24 @@ function App(){
         }
         if (!SCHED_DATE_OK) console.warn("[BaBayBite] Cột 'schedule_date' chưa có trong DB — tính năng 'hẹn ngày giao' tạm tắt. Chạy ALTER TABLE trong supabase-schema.sql rồi reload để bật.");
         const ps = (pR.data||[]).map(productFromDb);
-        const ss = sR.data||[];
-        // Big Update: phát hiện cột tg_token + tự nạp BOT_TOKEN từ acc admin (sync mọi máy)
-        TG_DB_OK = ss.length>0 && Object.prototype.hasOwnProperty.call(ss[0], "tg_token");
+        const rawStaff = sR.data||[];
+        // v1.12: phát hiện cột staff (role/is_admin/tg_token) để FE ghi đúng dù migration trước/sau
+        if (rawStaff.length) {
+          TG_DB_OK     = Object.prototype.hasOwnProperty.call(rawStaff[0], "tg_token");
+          ROLE_COL_OK  = Object.prototype.hasOwnProperty.call(rawStaff[0], "role");
+          ADMIN_COL_OK = Object.prototype.hasOwnProperty.call(rawStaff[0], "is_admin");
+        } else {
+          const [pa,pr,pt] = await Promise.all([
+            sb.from("staff").select("is_admin").limit(1),
+            sb.from("staff").select("role").limit(1),
+            sb.from("staff").select("tg_token").limit(1),
+          ]);
+          ADMIN_COL_OK = !pa.error; ROLE_COL_OK = !pr.error; TG_DB_OK = !pt.error;
+        }
+        if (!ADMIN_COL_OK) console.warn("[BaBayBite] Cột 'staff.is_admin' chưa có — đang nhận admin theo legacy 'role'. Chạy migration v1.12 rồi reload.");
+        const ss = rawStaff.map(staffFromDb); // → object FE mang isAdmin (bool)
         if (TG_DB_OK && !TG.isOn()) {
-          const adminTok = ss.filter(s=>s.role==="admin" && s.tg_token).sort((a,b)=>a.id-b.id)[0]?.tg_token;
+          const adminTok = ss.filter(s=>s.isAdmin && s.tg_token).sort((a,b)=>a.id-b.id)[0]?.tg_token;
           if (adminTok) { TG.setToken(adminTok); console.info("[BaBayBite] Đã nạp Telegram BOT_TOKEN từ tài khoản admin."); }
         }
         // v1.11: phát hiện điểm lấy hàng — bảng pickup_locations + cột orders.pickup_id
@@ -4812,9 +4846,8 @@ function App(){
     setCurrentUser(u);
     setAdminMode("admin"); // v1.11: admin luôn vào chế độ Admin trước
     toast(`👋 Xin chào ${u.name}`,"success");
-    // Mặc định vào màn đầu tiên user được phép xem
-    const allowed = ROLE_PERMS[u.role] || ["dashboard"];
-    setScreen(allowed[0]);
+    // v1.12: role theo ca — vào "dashboard" mặc định; gate render sẽ tự đưa về màn đúng theo effectiveRole
+    setScreen("dashboard");
   };
   const handleLogout = () => {
     if (!confirm("Đăng xuất khỏi hệ thống?")) return;
@@ -4825,7 +4858,7 @@ function App(){
   // v1.6.1: Admin-only delete order (PERMANENT, không phải huỷ)
   // Hoàn kho nếu đơn chưa kết thúc, rồi xoá hẳn khỏi DB (qua syncToDb diff)
   const deleteOrder = (oid) => {
-    if (currentUserRef.current?.role !== "admin") {
+    if (!currentUserRef.current?.isAdmin) {
       toast("Chỉ admin mới được xoá hẳn đơn","error");
       return;
     }
@@ -4856,10 +4889,11 @@ function App(){
       });
     };
     const mergeStaff = r => {
+      const m = staffFromDb(r); // v1.12: map sang shape FE (isAdmin)
       _setStaff(ss=>{
-        const ex = ss.find(x=>x.id===r.id);
-        if (ex && JSON.stringify(ex)===JSON.stringify(r)) return ss;
-        const next = ex ? ss.map(x=>x.id===r.id?r:x) : [...ss,r].sort((a,b)=>a.id-b.id);
+        const ex = ss.find(x=>x.id===m.id);
+        if (ex && JSON.stringify(ex)===JSON.stringify(m)) return ss;
+        const next = ex ? ss.map(x=>x.id===m.id?m:x) : [...ss,m].sort((a,b)=>a.id-b.id);
         staffRef.current = next;
         return next;
       });
@@ -5043,7 +5077,7 @@ function App(){
             await ch.track({
               id: currentUserRef.current.id,
               name: currentUserRef.current.name,
-              role: effectiveRoleRef.current || currentUserRef.current.role,
+              role: effectiveRoleRef.current || "off",
               joinedAt: Date.now()
             });
           }
@@ -5062,7 +5096,7 @@ function App(){
       ch.track({
         id: currentUser.id,
         name: currentUser.name,
-        role: effectiveRoleRef.current || currentUser.role,
+        role: effectiveRoleRef.current || "off",
         joinedAt: Date.now()
       }).catch(()=>{});
     } else {
@@ -5107,7 +5141,7 @@ function App(){
   // Tính ca hiện tại sớm để SCREENS dùng được (dù chưa có currentUser)
   const currentShift = getCurrentShift(shifts);
   // v1.11: admin có thể tạm chạy như thành viên (adminMode==="member")
-  const adminAsMember = currentUser?.role==="admin" && adminMode==="member";
+  const adminAsMember = currentUser?.isAdmin && adminMode==="member";
   const effectiveRoleEarly = getEffectiveRole(currentShift, shiftAssignments, currentUser, adminAsMember);
   if (currentUser) { effectiveRoleRef.current = effectiveRoleEarly; currentUserRef.current = currentUser; }
   // v1.8: sync refs cho tgBroadcast
@@ -5246,7 +5280,7 @@ function App(){
   return (
     <div className="app-shell" style={{fontFamily:"'Segoe UI',system-ui,-apple-system,sans-serif"}}>
       {sbOpen && <div className="sb-overlay" onClick={()=>setSbOpen(false)}/>}
-      <Sidebar screen={activeScreen} setScreen={(s)=>{setScreen(s);setSbOpen(false);}} orders={orders} currentShift={currentShift} allowed={allowed} sbOpen={sbOpen} onClose={()=>setSbOpen(false)} onLogout={handleLogout} currentUser={currentUser} effectiveRole={effectiveRole} onlineUsers={onlineUsers} onViewAsMember={currentUser.role==="admin"?()=>{setAdminMode("member");setSbOpen(false);}:null}/>
+      <Sidebar screen={activeScreen} setScreen={(s)=>{setScreen(s);setSbOpen(false);}} orders={orders} currentShift={currentShift} allowed={allowed} sbOpen={sbOpen} onClose={()=>setSbOpen(false)} onLogout={handleLogout} currentUser={currentUser} effectiveRole={effectiveRole} onlineUsers={onlineUsers} onViewAsMember={currentUser.isAdmin?()=>{setAdminMode("member");setSbOpen(false);}:null}/>
       <div className="app-main">
         <TopBar title={cur.title} sub={cur.sub} time={time} currentUser={currentUser} connStatus={connStatus} onLogout={handleLogout} onMenu={()=>setSbOpen(true)} effectiveRole={effectiveRole} currentShift={currentShift} notifEnabled={notifEnabled} onToggleNotif={toggleNotif}/>
         <div style={{flex:1,overflow:"hidden",display:"flex",minHeight:0}}>{cur.comp}</div>
@@ -5271,7 +5305,7 @@ function RestScreen({user,currentShift,shifts,shiftAssignments,onLogout}){
     }
     return null;
   })();
-  const [tc,bg] = RC[user.role]||["#475569","#f5f5f5"];
+  const [tc,bg] = (user.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
   return (
     <div style={{height:"100vh",display:"flex",alignItems:"center",justifyContent:"center",padding:20,background:"linear-gradient(135deg,#FFF4F0 0%,#FFE4D8 100%)",fontFamily:"'Segoe UI',system-ui,sans-serif"}}>
       <div style={{maxWidth:440,width:"100%",background:"#fff",borderRadius:16,padding:"28px 24px",textAlign:"center",boxShadow:"0 8px 40px rgba(238,77,45,.18)"}}>
@@ -5284,7 +5318,7 @@ function RestScreen({user,currentShift,shifts,shiftAssignments,onLogout}){
           <div style={{width:36,height:36,borderRadius:"50%",background:"#fff",color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800}}>{inits(user.name)}</div>
           <div style={{textAlign:"left"}}>
             <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>{user.name}</div>
-            <div style={{fontSize:11,color:tc,fontWeight:700}}>{RL[user.role]} (mặc định)</div>
+            <div style={{fontSize:11,color:tc,fontWeight:700}}>{user.isAdmin?"Admin":"Thành viên"}</div>
           </div>
         </div>
         {nextShift && (
