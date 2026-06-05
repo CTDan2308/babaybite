@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.12.0</title>
+<title>BaBayBite v1.13.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -280,7 +280,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
   off:       [],
 };
-const VERSION = "1.12.0";
+const VERSION = "1.13.0";
 
 /* Tính ca hiện tại dựa vào giờ phút (handle overnight shifts) */
 const hmToMin = s => { const [h,m] = (s||"0:0").split(":").map(Number); return h*60+(m||0); };
@@ -978,18 +978,28 @@ function TopBar({title,sub,time,currentUser,connStatus,onLogout,onMenu,effective
 ══════════════════════════════════════════════════════════ */
 function Dashboard({orders:allOrders,staff,currentUser,deleteOrder,viewDate,setViewDate}){
   const isAdmin = currentUser?.isAdmin === true;
-  // v1.9.5: lọc theo ngày đang xem (quản trị theo ngày)
-  const orders = allOrders.filter(o=>orderDay(o)===viewDate);
+  const [view,setView] = useState("day"); // v1.13: "day"=theo ngày | "all"=toàn chuỗi
+  // lọc theo ngày đang xem, hoặc TOÀN BỘ (toàn chuỗi)
+  const orders = view==="all" ? allOrders : allOrders.filter(o=>orderDay(o)===viewDate);
   const done  = orders.filter(o=>o.st==="hoan_thanh");
   const rev   = done.reduce((s,o)=>s+iTot(o),0);
   const ship  = orders.filter(o=>o.type==="ship"&&o.st==="hoan_thanh");
   const active= orders.filter(o=>!["hoan_thanh","huy"].includes(o.st));
+  // chart theo GIỜ — dùng cho view "theo ngày"
   const bars  = useMemo(()=>{
     const b=Array(8).fill(0);
     orders.forEach(o=>{const h=parseInt((o.t||"00:00").split(":")[0],10);const i=h-7;if(i>=0&&i<8)b[i]++;});
     return b;
   },[orders]);
   const maxB=Math.max(...bars,1);
+  // chart doanh thu theo NGÀY — dùng cho view "toàn chuỗi" (14 ngày gần nhất có đơn)
+  const daily = useMemo(()=>{
+    const m={};
+    allOrders.forEach(o=>{const d=orderDay(o);(m[d]=m[d]||{rev:0,cnt:0});m[d].cnt++;if(o.st==="hoan_thanh")m[d].rev+=iTot(o);});
+    return Object.keys(m).sort().slice(-14).map(d=>({d,...m[d]}));
+  },[allOrders]);
+  const maxDayRev=Math.max(...daily.map(x=>x.rev),1);
+  const totalDays=useMemo(()=>new Set(allOrders.map(o=>orderDay(o))).size,[allOrders]);
 
   const cards=[
     {l:"Tổng đơn",v:orders.length,ic:"ti-clipboard-list",bg:"var(--orl)",tc:"var(--or)",accent:"linear-gradient(135deg,#FFF4F0 0%,#FFE0D6 100%)"},
@@ -1000,7 +1010,17 @@ function Dashboard({orders:allOrders,staff,currentUser,deleteOrder,viewDate,setV
 
   return (
     <div style={{flex:1,overflowY:"auto",padding:18,background:"var(--bg)"}}>
-      <DateNav date={viewDate} setDate={setViewDate} countLabel={`${orders.length} đơn · ${done.length} hoàn thành · DT ${fmt(rev)}`}/>
+      <div style={{display:"flex",gap:10,marginBottom:12,alignItems:"center",flexWrap:"wrap"}}>
+        <div style={{display:"flex",background:"#fff",border:"1px solid var(--bd)",borderRadius:"var(--r-md)",padding:3,boxShadow:"var(--sh-sm)"}}>
+          {[["day","ti-calendar-event","Theo ngày"],["all","ti-chart-line","Toàn chuỗi"]].map(([v,ic,l])=>(
+            <button key={v} onClick={()=>setView(v)} style={{padding:"7px 15px",border:"none",borderRadius:"var(--r-sm)",cursor:"pointer",fontSize:12.5,fontWeight:700,background:view===v?"var(--or)":"transparent",color:view===v?"#fff":"var(--text2)",display:"flex",alignItems:"center",gap:6,transition:"all .15s"}}>
+              <i className={`ti ${ic}`} style={{fontSize:15}}/>{l}
+            </button>
+          ))}
+        </div>
+        {view==="all" && <span style={{fontSize:12,color:"var(--mut)"}}>Tổng kết toàn bộ chuỗi · <b style={{color:"var(--text)"}}>{totalDays}</b> ngày hoạt động · <b style={{color:"var(--ok)"}}>{fmt(rev)}</b> doanh thu</span>}
+      </div>
+      {view==="day" && <DateNav date={viewDate} setDate={setViewDate} countLabel={`${orders.length} đơn · ${done.length} hoàn thành · DT ${fmt(rev)}`}/>}
       <div className="grid-stats-4" style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:14}}>
         {cards.map(s=>(
           <div key={s.l} className="card card-hover" style={{padding:"16px 16px 14px",position:"relative",overflow:"hidden"}}>
@@ -1019,9 +1039,10 @@ function Dashboard({orders:allOrders,staff,currentUser,deleteOrder,viewDate,setV
       <div style={{display:"grid",gridTemplateColumns:"1fr 320px",gap:12,marginBottom:12}}>
         <div className="card" style={{padding:18}}>
           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-            <div style={{fontSize:13,fontWeight:700,color:"var(--text)",display:"flex",alignItems:"center",gap:6}}><i className="ti ti-chart-bar" style={{fontSize:16,color:"var(--or)"}}/>Đơn hàng theo giờ</div>
-            <span className="chip">8 khung giờ</span>
+            <div style={{fontSize:13,fontWeight:700,color:"var(--text)",display:"flex",alignItems:"center",gap:6}}><i className="ti ti-chart-bar" style={{fontSize:16,color:"var(--or)"}}/>{view==="all"?"Doanh thu theo ngày":"Đơn hàng theo giờ"}</div>
+            <span className="chip">{view==="all"?`${daily.length} ngày gần nhất`:"8 khung giờ"}</span>
           </div>
+          {view==="day" ? (
           <div style={{display:"flex",alignItems:"flex-end",gap:10,height:130,paddingBottom:4}}>
             {bars.map((v,i)=>{
               const hCur=new Date().getHours();
@@ -1035,6 +1056,18 @@ function Dashboard({orders:allOrders,staff,currentUser,deleteOrder,viewDate,setV
               );
             })}
           </div>
+          ) : (
+          <div style={{display:"flex",alignItems:"flex-end",gap:6,height:130,paddingBottom:4,overflowX:"auto"}}>
+            {daily.length===0 && <div style={{margin:"auto",color:"var(--mut2)",fontSize:12}}>Chưa có dữ liệu</div>}
+            {daily.map((x,i)=>(
+              <div key={x.d} title={`${isoToVN(x.d)} — ${fmt(x.rev)} · ${x.cnt} đơn`} style={{flex:"1 0 26px",display:"flex",flexDirection:"column",alignItems:"center",gap:4,cursor:"default"}}>
+                <div style={{fontSize:9,color:"var(--mut)",fontWeight:700,whiteSpace:"nowrap"}}>{x.rev?Math.round(x.rev/1000)+"k":""}</div>
+                <div style={{width:"100%",height:Math.round((x.rev/maxDayRev)*92)||3,background:"linear-gradient(180deg,#86EFAC 0%,#22C55E 100%)",borderRadius:"5px 5px 2px 2px",transition:"height .6s var(--ease)"}}/>
+                <div style={{fontSize:9,color:"var(--mut2)",fontWeight:600,whiteSpace:"nowrap"}}>{isoToVNShort(x.d)}</div>
+              </div>
+            ))}
+          </div>
+          )}
         </div>
         <div className="card" style={{padding:18}}>
           <div style={{fontSize:13,fontWeight:700,color:"var(--text)",marginBottom:14,display:"flex",alignItems:"center",gap:6}}><i className="ti ti-progress" style={{fontSize:16,color:"var(--or)"}}/>Trạng thái đơn</div>
@@ -3234,7 +3267,7 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
 /* ══════════════════════════════════════════════════════════
    REPORT SCREEN
 ══════════════════════════════════════════════════════════ */
-function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setViewDate}){
+function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setViewDate,shiftAssignments=[],currentShift=null}){
   // v1.9.5: BÁO CÁO THEO NGÀY — trước đây cộng dồn toàn thời gian dù ghi "cuối ca/hôm nay"
   const orders  = allOrders.filter(o=>orderDay(o)===viewDate);
   const done    = orders.filter(o=>o.st==="hoan_thanh");
@@ -5166,7 +5199,7 @@ function App(){
     staff:    {title:"Nhân sự & KPI",    sub:"Phân công · Theo dõi KPI · Bảng xếp hạng",
                comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments} viewDate={viewDate} setViewDate={setViewDate}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
-               comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate}/>},
+               comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate} shiftAssignments={shiftAssignments} currentShift={currentShift}/>},
     settings: {title:"Cài đặt",          sub:"Quản lý nhân sự, sản phẩm, danh mục, lịch ca",
                comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast}/>},
   };

@@ -6,6 +6,21 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.13.0] — 2026-06-05 (+07)
+
+📊 **Dashboard Theo ngày / Toàn chuỗi · Sửa crash Báo cáo**
+
+### Fixed
+- **Crash màn Báo cáo:** `ReportScreen` thiếu `shiftAssignments`/`currentShift` (do refactor v1.12 dùng 2 biến
+  này để tra Trưởng ca theo ca) → `ReferenceError`. Đã truyền 2 prop vào ReportScreen.
+
+### Added
+- **Dashboard 2 chế độ:** nút chuyển **"Theo ngày"** (như cũ, lọc theo `viewDate`) ↔ **"Toàn chuỗi"**
+  (tổng kết toàn bộ mọi ngày). Chế độ toàn chuỗi: ẩn thanh chọn ngày, hiện số ngày hoạt động + tổng doanh thu,
+  và biểu đồ **"Doanh thu theo ngày"** (14 ngày gần nhất) thay cho biểu đồ theo giờ.
+
+---
+
 ## [1.12.0] — 2026-06-05 (+07)
 
 🗑️ **Bỏ vai trò cố định — `staff.role` → `staff.is_admin` (bool)**
