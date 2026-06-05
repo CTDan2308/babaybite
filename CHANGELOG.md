@@ -6,6 +6,25 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.14.0] — 2026-06-05 (+07)
+
+📋 **Đơn Đặt trước (Pre-Order) · Bộ chọn giờ 24h**
+
+### Added
+- **Bộ chọn giờ 24h (`Time24`):** thay `<input type="time">` ở form tạo đơn & sửa đơn bằng 2 dropdown
+  giờ (00–23) : phút — luôn hiển thị dạng **24:00**, không phụ thuộc locale trình duyệt (hết AM/PM).
+- **Đơn ĐẶT TRƯỚC (status `pre_order`):** đơn tạo có hẹn giờ giao sẽ **KHÔNG** vào bếp ngay, mà vào mục
+  **"Đặt trước"** riêng trên màn Trực đơn.
+  - Sắp xếp theo giờ hẹn **gần → xa**, có đếm ngược / cảnh báo trễ.
+  - Nút **"Đưa vào pha"** — chỉ khi trực đơn xác nhận, đơn mới chuyển sang **"Mới"** (cần pha) của KDS,
+    tránh pha nhầm đơn đặt trước quá sớm.
+  - Nhắc trực đơn 1 lần khi đơn sắp tới giờ (trước 30 phút).
+
+### Changed
+- `OrderScreen`: danh sách "Đơn đang xử lý" không còn lẫn đơn đặt trước (tách hẳn mục riêng).
+
+---
+
 ## [1.13.0] — 2026-06-05 (+07)
 
 📊 **Dashboard Theo ngày / Toàn chuỗi · Sửa crash Báo cáo**
