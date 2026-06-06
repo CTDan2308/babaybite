@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.17.0</title>
+<title>BaBayBite v1.18.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -80,6 +80,8 @@ button:not(:disabled):active{transform:translateY(1px)}
 @keyframes notifFlash{0%{opacity:0}12%{opacity:1}55%{opacity:.4}100%{opacity:0}}
 @keyframes notifCard{0%{transform:translateY(-18px) scale(.96);opacity:0}6%{transform:translateY(0) scale(1.03);opacity:1}12%{transform:scale(1)}85%{opacity:1;transform:translateY(0) scale(1)}100%{opacity:0;transform:translateY(-10px) scale(.98)}}
 @keyframes ringPulse{0%{box-shadow:0 0 0 0 rgba(238,77,45,.5)}70%{box-shadow:0 0 0 14px rgba(238,77,45,0)}100%{box-shadow:0 0 0 0 rgba(238,77,45,0)}}
+@keyframes champGlow{0%,100%{box-shadow:0 6px 22px rgba(245,158,11,.35),0 0 0 0 rgba(245,158,11,.4)}50%{box-shadow:0 8px 30px rgba(245,158,11,.55),0 0 0 8px rgba(245,158,11,0)}}
+@keyframes crownBob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-3px) rotate(4deg)}}
 .fade-up{animation:fadeUp .25s var(--ease)}
 .fade-in{animation:fadeIn .2s var(--ease)}
 .shake{animation:shake .35s var(--ease)}
@@ -279,14 +281,14 @@ const CL_FALLBACK = {pha_che:"☕ Đồ pha chế",san_co:"📦 Đồ sẵn có"
 
 /* Role permissions — mỗi role chỉ thấy các màn liên quan để tập trung */
 const ROLE_PERMS = {
-  truong_ca: ["dashboard","order","kitchen","shipper","staff","report"],
+  truong_ca: ["dashboard","order","kitchen","shipper","staff","report","bxh"],
   truc_don:  ["order","shipper","dashboard"],
   pha_che:   ["kitchen"],
   shipper:   ["shipper"],
-  admin:     ["dashboard","order","kitchen","shipper","staff","report","settings"],
+  admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.17.0";
+const VERSION = "1.18.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -921,6 +923,7 @@ function Sidebar({screen,setScreen,orders,currentShift,allowed,sbOpen,onClose,on
     {k:"shipper",  icon:"ti-motorbike",       label:"Giao hàng", badge:inShip||null},
     {k:"staff",    icon:"ti-users",           label:"Nhân sự & KPI"},
     {k:"report",   icon:"ti-chart-bar",       label:"Báo cáo"},
+    {k:"bxh",      icon:"ti-trophy",          label:"Bảng xếp hạng"},
     {k:"settings", icon:"ti-settings",        label:"Cài đặt"},
   ];
   const nav = navAll.filter(n=>allowed.includes(n.k));
@@ -5045,6 +5048,119 @@ function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setSh
    Header tối giản (logout + status), KHÔNG sidebar/topbar admin.
    Dùng cho pha_che, truc_don (shipper có vỏ riêng ShipperApp).
 ══════════════════════════════════════════════════════════ */
+/* ══════════════════════════════════════════════════════════
+   v1.18: BẢNG XẾP HẠNG — ai cũng xem được, không phụ thuộc role/ca
+   - BXH KPI: tổng tiền KPI (iTot) các đơn hoàn thành → tie-break theo số đơn
+   - BXH Shipper: tổng doanh thu ship (dFee) đơn ship hoàn thành → tie-break số đơn
+   Top1 vô địch · Top2 á quân (bạc) · Top3-4 đồng · Top5-10 thường
+══════════════════════════════════════════════════════════ */
+const BXH_TIERS = {
+  1:{emoji:"👑",label:"Vô địch",col:"#B45309",grad:"linear-gradient(135deg,#FFFBEB,#FDE68A)",ring:"#F59E0B"},
+  2:{emoji:"🥈",label:"Á quân",  col:"#475569",grad:"linear-gradient(135deg,#F8FAFC,#E2E8F0)",ring:"#94A3B8"},
+  3:{emoji:"🥉",label:"Hạng 3",  col:"#9A3412",grad:"linear-gradient(135deg,#FFF7ED,#FED7AA)",ring:"#EA8C55"},
+  4:{emoji:"🥉",label:"Hạng 4",  col:"#9A3412",grad:"linear-gradient(135deg,#FFF7ED,#FED7AA)",ring:"#EA8C55"},
+};
+function Leaderboard({orders,staff,onClose=null}){
+  const [board,setBoard] = useState("kpi"); // kpi | ship
+  const nameOf = id => staff.find(s=>s.id===id)?.name || "—";
+  const build = (filterFn,valFn) => {
+    const m={};
+    orders.filter(filterFn).forEach(o=>{ const k=valFn.key(o); if(k==null) return; const e=m[k]=m[k]||{rev:0,cnt:0}; e.rev+=valFn.amt(o); e.cnt++; });
+    return Object.entries(m).map(([id,e])=>({id:+id,name:nameOf(+id),rev:e.rev,cnt:e.cnt}))
+      .sort((a,b)=>b.rev-a.rev||b.cnt-a.cnt).slice(0,10);
+  };
+  const kpiRows  = useMemo(()=>build(o=>o.st==="hoan_thanh", {key:o=>o.kpi, amt:o=>iTot(o)}),[orders,staff]);
+  const shipRows = useMemo(()=>build(o=>o.type==="ship"&&o.st==="hoan_thanh", {key:o=>o.sid, amt:o=>o.dFee||0}),[orders,staff]);
+  const rows = board==="kpi"?kpiRows:shipRows;
+  const revLabel = board==="kpi"?"Doanh thu KPI":"Doanh thu ship";
+
+  const Row = ({r,rank}) => {
+    const t = BXH_TIERS[rank];
+    if (rank===1) return (
+      <div style={{borderRadius:"var(--r-lg)",padding:"16px 16px 14px",background:t.grad,border:`2px solid ${t.ring}`,animation:"champGlow 2.4s ease-in-out infinite",position:"relative",overflow:"hidden"}}>
+        <div style={{position:"absolute",top:-10,right:-6,fontSize:64,opacity:.12,transform:"rotate(12deg)"}}>🏆</div>
+        <div style={{display:"flex",alignItems:"center",gap:12,position:"relative"}}>
+          <div style={{fontSize:40,lineHeight:1,animation:"crownBob 2.2s ease-in-out infinite"}}>👑</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:10.5,fontWeight:800,letterSpacing:1,color:t.col,textTransform:"uppercase"}}>★ Vô địch ★</div>
+            <div style={{fontSize:18,fontWeight:900,color:"#1f2937",lineHeight:1.15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,marginTop:12}}>
+          <div style={{flex:1,background:"rgba(255,255,255,.65)",borderRadius:"var(--r-md)",padding:"7px 10px"}}>
+            <div style={{fontSize:9.5,fontWeight:700,color:t.col,textTransform:"uppercase",letterSpacing:.5}}>{revLabel}</div>
+            <div style={{fontSize:16,fontWeight:900,color:"#1f2937"}}>{fmt(r.rev)}</div>
+          </div>
+          <div style={{background:"rgba(255,255,255,.65)",borderRadius:"var(--r-md)",padding:"7px 12px",textAlign:"center"}}>
+            <div style={{fontSize:9.5,fontWeight:700,color:t.col,textTransform:"uppercase",letterSpacing:.5}}>Số đơn</div>
+            <div style={{fontSize:16,fontWeight:900,color:"#1f2937"}}>{r.cnt}</div>
+          </div>
+        </div>
+      </div>
+    );
+    const medal = rank<=4;
+    return (
+      <div style={{display:"flex",alignItems:"center",gap:11,padding:medal?"11px 13px":"9px 12px",borderRadius:"var(--r-md)",
+        background:medal?t.grad:"#fff",border:`1px solid ${medal?t.ring:"var(--bd)"}`}}>
+        <div style={{width:34,height:34,flexShrink:0,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
+          fontSize:medal?18:13,fontWeight:900,background:medal?"rgba(255,255,255,.7)":"#F1F5F9",color:medal?t.col:"#64748B"}}>
+          {medal?t.emoji:rank}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:13.5,fontWeight:800,color:"#1f2937",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
+          <div style={{fontSize:10.5,color:"var(--mut2)",marginTop:1}}>{r.cnt} đơn</div>
+        </div>
+        <div style={{fontWeight:900,fontSize:14,color:medal?t.col:"var(--or)"}}>{fmt(r.rev)}</div>
+      </div>
+    );
+  };
+
+  const body = (
+    <div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
+      {/* header + toggle */}
+      <div style={{padding:onClose?"0 0 12px":"4px 0 12px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+          <i className="ti ti-trophy" style={{fontSize:22,color:"#F59E0B"}}/>
+          <div style={{flex:1}}>
+            <div style={{fontSize:16,fontWeight:900,color:"#1f2937"}}>Bảng xếp hạng</div>
+            <div style={{fontSize:11,color:"var(--mut2)"}}>Top 10 cá nhân xuất sắc</div>
+          </div>
+          {onClose && <button onClick={onClose} aria-label="Đóng" style={{width:32,height:32,borderRadius:"50%",border:"1px solid var(--bd)",background:"#fff",cursor:"pointer",fontSize:16,color:"var(--mut2)",display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-x"/></button>}
+        </div>
+        <div style={{display:"flex",gap:6,background:"#F1F5F9",borderRadius:"var(--r-md)",padding:4}}>
+          {[{k:"kpi",l:"BXH KPI",i:"ti-coin"},{k:"ship",l:"BXH Shipper",i:"ti-motorbike"}].map(b=>{
+            const on=board===b.k;
+            return <button key={b.k} onClick={()=>setBoard(b.k)} style={{flex:1,padding:"9px 8px",border:"none",borderRadius:"var(--r-sm)",cursor:"pointer",
+              fontSize:12.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:6,transition:"all .15s",
+              background:on?"#fff":"transparent",color:on?"var(--or)":"var(--text2)",boxShadow:on?"var(--sh-sm)":"none"}}>
+              <i className={"ti "+b.i} style={{fontSize:15}}/>{b.l}</button>;
+          })}
+        </div>
+      </div>
+      {/* list */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,minHeight:0,paddingBottom:8}}>
+        {rows.length===0
+          ? <div style={{textAlign:"center",padding:"50px 16px",color:"var(--mut2)"}}>
+              <i className="ti ti-trophy-off" style={{fontSize:46,display:"block",marginBottom:10,opacity:.5}}/>
+              <div style={{fontSize:13,fontWeight:600}}>Chưa có dữ liệu xếp hạng</div>
+              <div style={{fontSize:11,marginTop:4}}>{board==="kpi"?"Chưa có đơn hoàn thành nào":"Chưa có đơn ship hoàn thành nào"}</div>
+            </div>
+          : rows.map((r,i)=><Row key={r.id} r={r} rank={i+1}/>)
+        }
+      </div>
+    </div>
+  );
+
+  if (!onClose) return <div style={{flex:1,overflow:"hidden",padding:"14px 16px",maxWidth:560,width:"100%",margin:"0 auto"}}>{body}</div>;
+  return (
+    <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(15,23,42,.55)",backdropFilter:"blur(2px)",display:"flex",alignItems:"flex-end",justifyContent:"center",animation:"fadeIn .18s"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg)",width:"100%",maxWidth:480,maxHeight:"88vh",borderRadius:"var(--r-lg) var(--r-lg) 0 0",padding:"16px 16px 0",display:"flex",flexDirection:"column",animation:"fadeUp .25s var(--ease)",boxShadow:"0 -8px 40px rgba(0,0,0,.3)"}}>
+        {body}
+      </div>
+    </div>
+  );
+}
+
 function RoleAppShell({roleKey,title,icon,bgColor,currentUser,currentShift,connStatus,onLogout,onlineUsers=[],soundEnabled,onToggleSound,children}){
   return (
     <div style={{height:"100vh",display:"flex",flexDirection:"column",fontFamily:"'Segoe UI',system-ui,-apple-system,sans-serif",overflow:"hidden",background:"#F5F5F5"}}>
@@ -5114,6 +5230,8 @@ function App(){
   const [connStatus,setConnStatus] = useState("connecting");
   const [sbOpen,setSbOpen]   = useState(false);
   const [viewDate,setViewDate] = useState(()=>todayISO()); // v1.9.5: ngày đang xem ở màn quản trị
+  const [showBxh,setShowBxh] = useState(false); // v1.18: BXH modal — ai cũng mở được
+  const [trucView,setTrucView] = useState("order"); // v1.18: trực đơn chuyển Trực đơn ↔ Giao hàng
 
   // Refs để diff-wrapper có prev mới nhất (đồng bộ với state)
   const ordersRef     = useRef([]);
@@ -5706,6 +5824,8 @@ function App(){
                comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments} viewDate={viewDate} setViewDate={setViewDate}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
                comp:<ReportScreen orders={orders} staff={staff} products={products} shift={currentShift?{name:currentShift.name,start:currentShift.start_at,end:currentShift.end_at}:shift} toast={toast} viewDate={viewDate} setViewDate={setViewDate} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>},
+    bxh:      {title:"Bảng xếp hạng",     sub:"Top 10 cá nhân xuất sắc · KPI & Shipper",
+               comp:<Leaderboard orders={orders} staff={staff}/>},
     settings: {title:"Cài đặt",          sub:"Quản lý nhân sự, sản phẩm, danh mục, lịch ca",
                comp:<SettingsScreen products={products} setProducts={setProducts} staff={staff} setStaff={setStaff} zones={zones} setZones={setZones} pickupLocs={pickupLocs} setPickupLocs={setPickupLocs} shift={shift} setShift={setShift} categories={categories} setCategories={setCategories} shifts={shifts} setShifts={setShifts} shiftAssignments={shiftAssignments} upsertAssignment={upsertAssignment} deleteAssignment={deleteAssignment} currentUser={currentUser} toast={toast} appConfig={appConfig} setAppConfig={setAppConfig}/>},
   };
@@ -5754,12 +5874,21 @@ function App(){
   ) : null;
   // v1.15: overlay hiệu ứng động khi có đơn mới (render ở mọi shell)
   const flashEl = <NotifFlash event={flashEvent}/>;
+  // v1.18: BXH — nút nổi + modal, hiển thị ở MỌI shell để ai cũng xem được
+  const bxhEl = showBxh ? <Leaderboard orders={orders} staff={staff} onClose={()=>setShowBxh(false)}/> : null;
+  const bxhFab = (
+    <button onClick={()=>setShowBxh(true)} title="Bảng xếp hạng"
+      style={{position:"fixed",right:16,bottom:adminAsMember?72:16,zIndex:2500,padding:"11px 15px",borderRadius:"var(--r-pill)",border:"none",cursor:"pointer",
+        background:"linear-gradient(135deg,#F59E0B,#D97706)",color:"#fff",fontSize:12.5,fontWeight:800,boxShadow:"0 6px 20px rgba(245,158,11,.45)",display:"flex",alignItems:"center",gap:7}}>
+      <i className="ti ti-trophy" style={{fontSize:16}}/>BXH
+    </button>
+  );
 
   // Đang nghỉ → màn rest
   if (effectiveRole === "off") {
     return <>
       <RestScreen user={currentUser} currentShift={currentShift} shifts={shifts} shiftAssignments={shiftAssignments} onLogout={handleLogout} adminAsMember={adminAsMember} onBackToAdmin={()=>setAdminMode("admin")}/>
-      {adminMemberBar}
+      {bxhFab}{bxhEl}{adminMemberBar}
     </>;
   }
 
@@ -5788,7 +5917,7 @@ function App(){
         onLogout={handleLogout} toast={toast} appConfig={appConfig}
         soundEnabled={soundEnabled} onToggleSound={toggleSound}
         connStatus={connStatus} currentShift={currentShift} onlineUsers={onlineUsers}/>
-      {adminMemberBar}{flashEl}
+      {bxhFab}{bxhEl}{adminMemberBar}{flashEl}
     </>;
   }
 
@@ -5800,19 +5929,43 @@ function App(){
         soundEnabled={soundEnabled} onToggleSound={toggleSound}>
         <KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>
       </RoleAppShell>
-      {adminMemberBar}{flashEl}
+      {bxhFab}{bxhEl}{adminMemberBar}{flashEl}
     </>;
   }
 
-  // v1.5: Trực đơn có app riêng (OrderScreen + shell tối giản)
+  // v1.5: Trực đơn có app riêng — v1.18: thêm tab Giao hàng (truy cập + phân đơn shipper)
   if (effectiveRole === "truc_don") {
+    const tdPending = orders.filter(o=>!["hoan_thanh","huy"].includes(o.st)).length;
+    const tdShip    = orders.filter(o=>o.type==="ship"&&["san_sang","dang_giao"].includes(o.st)).length;
+    const tdTabs = [
+      {k:"order",  l:"Trực đơn", i:"ti-clipboard-list", n:tdPending},
+      {k:"shipper",l:"Giao hàng",i:"ti-motorbike",      n:tdShip},
+    ];
     return <>
       <RoleAppShell roleKey="truc_don" title="TRỰC ĐƠN" icon="📋" bgColor="linear-gradient(135deg,#C73D22,#A12714)"
         currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}
         soundEnabled={soundEnabled} onToggleSound={toggleSound}>
-        <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>
+        <div style={{display:"flex",gap:6,padding:"8px 10px",background:"#fff",borderBottom:"1px solid var(--bd)",flexShrink:0}}>
+          {tdTabs.map(t=>{
+            const on=trucView===t.k;
+            return (
+              <button key={t.k} onClick={()=>setTrucView(t.k)}
+                style={{flex:1,padding:"9px 8px",border:"none",borderRadius:"var(--r-md)",cursor:"pointer",fontSize:13,fontWeight:800,
+                  display:"flex",alignItems:"center",justifyContent:"center",gap:7,transition:"all .15s",
+                  background:on?"var(--or)":"#F1F5F9",color:on?"#fff":"var(--text2)"}}>
+                <i className={"ti "+t.i} style={{fontSize:16}}/>{t.l}
+                {t.n>0&&<span style={{fontSize:11,fontWeight:800,minWidth:18,height:18,padding:"0 5px",borderRadius:9,display:"inline-flex",alignItems:"center",justifyContent:"center",background:on?"rgba(255,255,255,.25)":"var(--or)",color:"#fff"}}>{t.n}</span>}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{flex:1,overflow:"hidden",display:"flex",minHeight:0}}>
+          {trucView==="shipper"
+            ? <ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>
+            : <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>}
+        </div>
       </RoleAppShell>
-      {adminMemberBar}{flashEl}
+      {bxhFab}{bxhEl}{adminMemberBar}{flashEl}
     </>;
   }
 

@@ -6,6 +6,15 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.18.0] — 2026-06-06 (+07)
+
+### Added
+- **Trực đơn truy cập được cả Giao hàng:** màn Trực đơn nay có **2 tab** ("Trực đơn" / "Giao hàng") ngay trên đầu — người trực đơn vừa tạo/nhận đơn, vừa mở giao diện giao hàng để **phân đơn cho shipper** mà không cần đổi role hay nhờ trưởng ca. Mỗi tab có badge đếm số đơn đang xử lý / đang giao.
+- **Bảng xếp hạng (BXH):** tab/nút mới **ai cũng xem được**, không phụ thuộc role hay ca được phân (nút 🏆 nổi ở các màn role riêng, và là một mục trong sidebar của trưởng ca/admin). Hai BXH:
+  - **BXH KPI:** xếp theo tổng tiền KPI bán được (đơn hoàn thành) → tie-break theo số đơn.
+  - **BXH Shipper:** xếp theo tổng doanh thu ship đi được (đơn ship hoàn thành) → tie-break theo số đơn.
+  - Hiển thị Top 10: **Top 1 hiệu ứng vô địch** (vương miện + glow), **Top 2 huy chương bạc**, **Top 3–4 huy chương đồng**, Top 5–10 dạng danh sách thường. Mỗi dòng chỉ hiện **Tên · Doanh thu · Số đơn**.
+
 ## [1.17.0] — 2026-06-05 (+07)
 
 ### Changed
