@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.20.0</title>
+<title>BaBayBite v1.21.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -165,6 +165,7 @@ let ADMIN_COL_OK = false;
 let PICKUP_DB_OK = false;
 let ORDER_PICKUP_OK = false;
 let CONFIG_DB_OK = false; // v1.15: đã có bảng app_config chưa
+let PAID_OK = true; // v1.21: đã có cột orders.paid (đã thu tiền) chưa — chưa migrate thì KHÔNG ghi để tránh 400
 let PICKUP_LOCS = [];
 const pickupName = id => { const p = PICKUP_LOCS.find(x=>x.id===id); return p ? p.name : ""; };
 const productFromDb = r => ({id:r.id,name:r.name,cat:r.cat,price:r.price,stock:r.stock,on:r.on_menu,emoji:r.emoji,recipe:r.recipe});
@@ -183,8 +184,8 @@ const staffToDb = s => ({
   ...(ROLE_COL_OK?{role:(s.isAdmin?"admin":"truc_don")}:{}), // backward-compat khi chưa drop cột role
   ...(ADMIN_COL_OK?{is_admin:(s.isAdmin===true)}:{}),
 });
-const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",pickupId:(r.pickup_id??null),createdAt:r.created_at||""});
-const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null, ...(SCHED_DATE_OK?{schedule_date:o.schD||null}:{}), ...(ORDER_PICKUP_OK?{pickup_id:(o.pickupId??null)}:{})});
+const orderFromDb   = r => ({id:orderId(r.num),num:r.num,t:r.t,cus:r.cus,ph:r.ph||"",type:r.type,adr:r.adr||"",items:r.items||[],st:r.st,pay:r.pay,paid:r.paid===true,dFee:r.d_fee,disc:r.disc,dT:r.d_t,by:r.by_id,kpi:r.kpi_id,sid:r.sid,note:r.note||"",returnReason:r.return_reason||"",schA:r.schedule_at||"",schD:r.schedule_date||"",pickupId:(r.pickup_id??null),createdAt:r.created_at||""});
+const orderToDb     = o => ({num:o.num,t:o.t,cus:o.cus,ph:o.ph,type:o.type,adr:o.adr,items:o.items,st:o.st,pay:o.pay,d_fee:o.dFee,disc:o.disc,d_t:o.dT,by_id:o.by,kpi_id:o.kpi,sid:o.sid,note:o.note,return_reason:o.returnReason||null,schedule_at:o.schA||null, ...(SCHED_DATE_OK?{schedule_date:o.schD||null}:{}), ...(ORDER_PICKUP_OK?{pickup_id:(o.pickupId??null)}:{}), ...(PAID_OK?{paid:o.paid===true}:{})});
 const shiftFromDb   = r => ({name:r.name,start:r.start_at,end:r.end_at});
 const shiftToDb     = s => ({name:s.name,start_at:s.start,end_at:s.end});
 
@@ -294,7 +295,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.20.0";
+const VERSION = "1.21.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -1576,7 +1577,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
   const [q,setQ] = useState("");            // v1.15: tìm đơn đang xử lý
   const [stFilter,setStFilter] = useState("all"); // v1.15: lọc theo trạng thái
   const [viewTab,setViewTab] = useState("active"); // v1.17: tách tab Đang xử lý / Đặt trước
-  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",disc:0,dT:"fixed",note:"",items:[],schA:"",schD:"",pickupId:(pickupLocs[0]?.id??null)};
+  const EC = {cus:"",ph:"",type:"tai_cho",adr:"",zone:0,kpi:currentUser.id,pay:"cash",paid:false,disc:0,dT:"fixed",note:"",items:[],schA:"",schD:"",pickupId:(pickupLocs[0]?.id??null)};
   const cats = categories.length ? categories : Object.keys(CL_FALLBACK).map((k,i)=>({key:k,label:CL_FALLBACK[k],sort:i}));
   const [cat,setCat]   = useState(cats[0]?.key || "pha_che");
   const [cart,setCart] = useState({...EC});
@@ -1611,7 +1612,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
     if(!cart.items.length){toast("Giỏ hàng đang trống","warn");return;}
     const num = (orders.length ? Math.max(...orders.map(o=>o.num||0)) : 0) + 1;
     const id  = `ĐH${String(num).padStart(3,"0")}`;
-    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:(cart.schA?"pre_order":"moi"),pay:cart.pay,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||"",schD:cart.schA?(cart.schD||todayISO()):"",pickupId:(cart.pickupId??null)};
+    const o={id,num,t:nowS(),cus:cart.cus.trim(),ph:cart.ph,type:cart.type,adr:cart.adr,items:cart.items.map(i=>({...i})),st:(cart.schA?"pre_order":"moi"),pay:cart.pay,paid:!!cart.paid,dFee,disc:discAmt,dT:cart.dT,by:currentUser.id,kpi:cart.kpi,sid:null,note:cart.note,schA:cart.schA||"",schD:cart.schA?(cart.schD||todayISO()):"",pickupId:(cart.pickupId??null)};
     setProducts(ps=>ps.map(p=>{const ci=cart.items.find(i=>i.pid===p.id);return ci?{...p,stock:Math.max(0,p.stock-ci.qty)}:p;}));
     setOrders(os=>[...os,o]);
     setCart({...EC,kpi:currentUser.id});
@@ -1669,6 +1670,12 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
     setOrders(os=>os.map(x=>x.id===oid?{...x,st:"moi"}:x));
     toast(`▶ Đơn ${oid} đã đưa vào pha`,"success");
   };
+  // v1.21: trực đơn xác nhận đã thu tiền (shipper khỏi thu)
+  const togglePaid = oid => setOrders(os=>os.map(o=>{
+    if (o.id!==oid) return o;
+    const np=!o.paid; toast(np?`✓ ${oid}: đã thu tiền`:`${oid}: bỏ đánh dấu đã thu`, np?"success":"info");
+    return {...o,paid:np};
+  }));
   // v1.15: lọc + tìm kiếm đơn đang xử lý (giảm sót đơn khi số lượng lớn)
   const ACTIVE_ST = ["moi","pha_che","san_sang","da_lay","dang_giao"];
   const qn = q.trim().toLowerCase();
@@ -1910,6 +1917,12 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
                 style={{flex:1,padding:"8px 4px",border:`1.5px solid ${cart.pay===v?"var(--ok)":"var(--bd)"}`,borderRadius:"var(--r-sm)",cursor:"pointer",background:cart.pay===v?"var(--ok-bg)":"#fff",color:cart.pay===v?"var(--ok)":"var(--text2)",fontSize:11.5,fontWeight:cart.pay===v?700:500,display:"flex",alignItems:"center",justifyContent:"center",gap:5}}><span style={{fontSize:13}}>{e}</span>{l}</button>
             ))}
           </div>
+          {/* v1.21: đánh dấu đã thu tiền ngay tại quầy → shipper khỏi thu */}
+          <button onClick={()=>setCart(c=>({...c,paid:!c.paid}))}
+            style={{width:"100%",marginBottom:7,padding:"9px 10px",border:`1.5px solid ${cart.paid?"#16A34A":"var(--bd)"}`,borderRadius:"var(--r-sm)",cursor:"pointer",background:cart.paid?"#F0FDF4":"#fff",color:cart.paid?"#15803D":"var(--text2)",fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:7}}>
+            <i className={"ti "+(cart.paid?"ti-circle-check-filled":"ti-cash")} style={{fontSize:16}}/>
+            {cart.paid?"Đã thanh toán (thu tại quầy)":"Chưa thu tiền — bấm nếu đã thu"}
+          </button>
           <input value={cart.note||""} onChange={e=>setCart(c=>({...c,note:e.target.value}))} placeholder="📝 Ghi chú đơn (tùy chọn)..."
             style={{...inp,padding:"7px 10px",fontSize:11.5}}/>
         </div>
@@ -2138,6 +2151,11 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
                   <div>
                     <span style={{fontSize:15,fontWeight:800,color:"var(--or)"}}>{fmt(iTot(o))}</span>
                     <span className="chip" style={{marginLeft:6,fontSize:10}}>{o.pay==="qr"?"📱 QR":"💵 Mặt"}</span>
+                    <button onClick={()=>canEditOrder&&togglePaid(o.id)} disabled={!canEditOrder}
+                      title={canEditOrder?(o.paid?"Đã thu tiền — bấm để bỏ":"Chưa thu — bấm xác nhận đã thu"):(o.paid?"Đã thu tiền":"Chưa thu tiền")}
+                      style={{marginLeft:6,fontSize:10,fontWeight:800,padding:"3px 8px",borderRadius:"var(--r-pill)",cursor:canEditOrder?"pointer":"default",border:`1px solid ${o.paid?"#16A34A":"#FCA5A5"}`,background:o.paid?"#F0FDF4":"#FEF2F2",color:o.paid?"#15803D":"#B91C1C"}}>
+                      <i className={"ti "+(o.paid?"ti-circle-check-filled":"ti-cash")} style={{fontSize:11,marginRight:3}}/>{o.paid?"Đã thu":"Chưa thu"}
+                    </button>
                   </div>
                   <div style={{display:"flex",gap:5}}>
                     {canEditOrder && (
@@ -2996,11 +3014,17 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
                       <div style={{fontSize:14,fontWeight:700,color:"var(--text)"}}>{fmt(itemTotal(current)+(current.dFee||0))}</div>
                     </div>
                   </div>
-                  {/* v1.15: nút hiện QR thu tiền cho shipper */}
-                  <button onClick={()=>setQrFor(current)}
-                    style={{width:"100%",marginTop:10,padding:"12px",borderRadius:10,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0EA5E9,#0369A1)",color:"#fff",fontSize:13.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(2,132,199,.28)"}}>
-                    <i className="ti ti-qrcode" style={{fontSize:18}}/>Hiện QR thu tiền · {fmt(itemTotal(current)+(current.dFee||0))}
-                  </button>
+                  {/* v1.21: đã thu tiền tại quầy → KHÔNG cần thu; chưa thu → nút QR thu tiền */}
+                  {current.paid ? (
+                    <div style={{width:"100%",marginTop:10,padding:"12px",borderRadius:10,background:"#F0FDF4",border:"1.5px solid #16A34A",color:"#15803D",fontSize:13,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+                      <i className="ti ti-circle-check-filled" style={{fontSize:18}}/>Đã thanh toán tại quầy — không cần thu tiền
+                    </div>
+                  ) : (
+                    <button onClick={()=>setQrFor(current)}
+                      style={{width:"100%",marginTop:10,padding:"12px",borderRadius:10,border:"none",cursor:"pointer",background:"linear-gradient(135deg,#0EA5E9,#0369A1)",color:"#fff",fontSize:13.5,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",gap:8,boxShadow:"0 4px 12px rgba(2,132,199,.28)"}}>
+                      <i className="ti ti-qrcode" style={{fontSize:18}}/>Hiện QR thu tiền · {fmt(itemTotal(current)+(current.dFee||0))}
+                    </button>
+                  )}
                 </div>
 
                 {/* CTA buttons */}
@@ -5210,6 +5234,14 @@ function App(){
           SCHED_DATE_OK = !probe.error;
         }
         if (!SCHED_DATE_OK) console.warn("[BaBayBite] Cột 'schedule_date' chưa có trong DB — tính năng 'hẹn ngày giao' tạm tắt. Chạy ALTER TABLE trong supabase-schema.sql rồi reload để bật.");
+        // v1.21: phát hiện cột paid (đã thu tiền)
+        if (oR.data && oR.data.length) {
+          PAID_OK = Object.prototype.hasOwnProperty.call(oR.data[0], "paid");
+        } else {
+          const probe = await sb.from("orders").select("paid").limit(1);
+          PAID_OK = !probe.error;
+        }
+        if (!PAID_OK) console.warn("[BaBayBite] Cột 'orders.paid' chưa có — trạng thái thu tiền tạm chưa lưu. Chạy ALTER TABLE trong supabase-schema.sql rồi reload để bật.");
         const ps = (pR.data||[]).map(productFromDb);
         const rawStaff = sR.data||[];
         // v1.12: phát hiện cột staff (role/is_admin/tg_token) để FE ghi đúng dù migration trước/sau

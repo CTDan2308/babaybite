@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS orders (
   items      JSONB NOT NULL DEFAULT '[]'::jsonb,
   st         TEXT NOT NULL DEFAULT 'moi',
   pay        TEXT NOT NULL DEFAULT 'cash',
+  paid       BOOLEAN NOT NULL DEFAULT false,
   d_fee      INT NOT NULL DEFAULT 0,
   disc       INT NOT NULL DEFAULT 0,
   d_t        TEXT NOT NULL DEFAULT 'fixed',
@@ -78,6 +79,8 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 -- v1.2 migration: thêm cột return_reason nếu DB cũ chưa có
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS return_reason TEXT;
+-- v1.21 migration: cột 'paid' = đã thu tiền (trực đơn thu tại quầy → shipper khỏi thu)
+ALTER TABLE orders ADD COLUMN IF NOT EXISTS paid BOOLEAN NOT NULL DEFAULT false;
 
 -- v1.9: hẹn giờ giao (HH:MM text — null = giao ngay)
 ALTER TABLE orders ADD COLUMN IF NOT EXISTS schedule_at TEXT;

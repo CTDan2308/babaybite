@@ -6,6 +6,17 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.21.0] — 2026-06-06 (+07)
+
+### ⚠️ Migration
+- Chạy lại `supabase-schema.sql` (idempotent) để thêm cột **`orders.paid`** (đã thu tiền). Chưa migrate thì code vẫn chạy bình thường, chỉ chưa lưu được trạng thái thu tiền (đọc mặc định "chưa thu").
+
+### Added
+- **Trạng thái thu tiền cho đơn (`paid`):**
+  - Khi tạo đơn ở **Trực đơn** có nút **"Đã thanh toán (thu tại quầy)"**.
+  - Mỗi thẻ đơn ở danh sách "Đang xử lý" có **badge Đã thu / Chưa thu** bấm để đổi (chỉ Trực đơn/Trưởng ca/Admin).
+- **Shipper khỏi thu khi đã thanh toán:** nếu đơn được đánh dấu đã thu tiền, màn Shipper **ẩn nút "Hiện QR thu tiền"** và hiện băng xanh *"Đã thanh toán tại quầy — không cần thu tiền"*. Đơn chưa thu vẫn hiện QR như cũ.
+
 ## [1.20.0] — 2026-06-06 (+07)
 
 ### ⚠️ Migration bắt buộc
