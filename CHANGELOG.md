@@ -6,6 +6,16 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.19.0] — 2026-06-06 (+07)
+
+### Changed
+- **Thiết kế lại Bảng xếp hạng theo hướng mở rộng (config-driven):** gộp các BXH vào **một màn duy nhất**, chọn tiêu chí bằng **thanh chip cuộn ngang** thay vì 2 nút cứng — sẵn sàng cho nhiều tiêu chí về sau. Mỗi BXH vẫn hiển thị **Top 10** (Top 1 vô địch, Top 2 bạc, Top 3–4 đồng, Top 5–10 thường) với Tên · Doanh thu/Chỉ số · Số đơn.
+- Thêm tiêu chí mới giờ chỉ cần **thêm 1 dòng vào `BXH_DEFS`**, không phải sửa giao diện.
+
+### Added
+- **BXH "Chăm chỉ nhất":** xếp theo số ca được phân công nhiều nhất (đếm từ `shift_assignments`, bỏ vai trò off).
+- Để sẵn khung cho các tiêu chí tương lai (vd "Pha chế nhiều đơn nhất") — kèm ví dụ mẫu trong code, kích hoạt khi có dữ liệu người pha.
+
 ## [1.18.0] — 2026-06-06 (+07)
 
 ### Added
