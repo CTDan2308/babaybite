@@ -130,13 +130,26 @@ CREATE TABLE IF NOT EXISTS shifts (
   sort       SMALLINT NOT NULL DEFAULT 0
 );
 
--- Phân công role cho từng staff trong từng ca (override staff.role mặc định)
+-- Phân công role cho từng staff trong từng ca, THEO NGÀY (v1.20)
+-- Khóa chính (day, shift_id, staff_id): mỗi ngày phân công riêng biệt.
 CREATE TABLE IF NOT EXISTS shift_assignments (
+  day        DATE     NOT NULL DEFAULT CURRENT_DATE,
   shift_id   SMALLINT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   staff_id   BIGINT   NOT NULL REFERENCES staff(id)  ON DELETE CASCADE,
   role       TEXT     NOT NULL,
-  PRIMARY KEY (shift_id, staff_id)
+  PRIMARY KEY (day, shift_id, staff_id)
 );
+
+-- ── MIGRATION v1.20 (idempotent): bảng cũ chỉ có (shift_id, staff_id) → thêm cột 'day' ──
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name='shift_assignments' AND column_name='day') THEN
+    ALTER TABLE shift_assignments ADD COLUMN day DATE NOT NULL DEFAULT CURRENT_DATE;
+    -- đổi khóa chính sang (day, shift_id, staff_id)
+    ALTER TABLE shift_assignments DROP CONSTRAINT IF EXISTS shift_assignments_pkey;
+    ALTER TABLE shift_assignments ADD PRIMARY KEY (day, shift_id, staff_id);
+  END IF;
+END $$;
 
 CREATE TABLE IF NOT EXISTS categories (
   key        TEXT PRIMARY KEY,
@@ -347,7 +360,7 @@ END $$;
 -- v1.12: staff.role đã bị bỏ → KHÔNG đọc cột role nữa, dùng giá trị mặc định.
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM shift_assignments) THEN
-    INSERT INTO shift_assignments (shift_id, staff_id, role)
-    SELECT 1, id, 'truc_don' FROM staff WHERE active = true;
+    INSERT INTO shift_assignments (day, shift_id, staff_id, role)
+    SELECT CURRENT_DATE, 1, id, 'truc_don' FROM staff WHERE active = true;
   END IF;
 END $$;

@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.19.0</title>
+<title>BaBayBite v1.20.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -271,12 +271,18 @@ const RC = {
   off:      ["#94A3B8","#F1F5F9"],
 };
 /* v1.7: helper — role THỰC TẾ trong 1 ca cụ thể (admin luôn admin) */
-const roleInShift = (staffId, staffIsAdmin, shiftId, shiftAssignments) => {
+const roleInShift = (staffId, staffIsAdmin, shiftId, shiftAssignments, day=null) => {
   if (staffIsAdmin === true) return "admin";
   if (!shiftId) return "off";
-  const a = shiftAssignments.find(x => x.shift_id===shiftId && x.staff_id===staffId);
+  const d = day || todayISO();
+  const a = (shiftAssignments||[]).find(x => x.shift_id===shiftId && x.staff_id===staffId && saMatchDay(x,d));
   return a ? a.role : "off";
 };
+/* v1.20: phân ca theo NGÀY. row.day=null = dữ liệu cũ trước migration → áp cho mọi ngày
+   (tránh khoá đăng nhập trong lúc chuyển đổi). Sau migration mọi row đều có day. */
+const saMatchDay = (a, day) => a.day==null || a.day===day;
+const saSame = (a, b) => (a.day??null)===(b.day??null) && a.shift_id===b.shift_id && a.staff_id===b.staff_id;
+const assignsOnDay = (sas, shift_id, day) => (sas||[]).filter(a=>a.shift_id===shift_id && a.role!=="off" && saMatchDay(a,day));
 const CL_FALLBACK = {pha_che:"☕ Đồ pha chế",san_co:"📦 Đồ sẵn có",kho:"⚡ Dùng ngay"};
 
 /* Role permissions — mỗi role chỉ thấy các màn liên quan để tập trung */
@@ -288,7 +294,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.19.0";
+const VERSION = "1.20.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -318,7 +324,8 @@ const getEffectiveRole = (currentShift, shiftAssignments, user, adminAsMember=fa
   if (!user) return null;
   if (user.isAdmin === true && !adminAsMember) return "admin";
   if (!currentShift) return "off";
-  const a = shiftAssignments.find(x => x.shift_id===currentShift.id && x.staff_id===user.id);
+  const today = todayISO();
+  const a = shiftAssignments.find(x => x.shift_id===currentShift.id && x.staff_id===user.id && saMatchDay(x,today));
   return a ? a.role : "off";
 };
 
@@ -1443,7 +1450,7 @@ function EditOrderModal({order,products,categories,zones,pickupLocs=[],staff,cur
           <div style={{marginBottom:9}}>
             <div style={lbl}>Người nhận KPI</div>
             <KpiPicker staff={staff} value={d.kpi} onChange={id=>setD(s=>({...s,kpi:id}))}
-              inShiftIds={new Set(shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").map(a=>a.staff_id))} inp={inp}/>
+              inShiftIds={new Set(shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off" && saMatchDay(a,todayISO())).map(a=>a.staff_id))} inp={inp}/>
           </div>
           <div style={{marginBottom:9}}>
             <div style={lbl}>Loại đơn</div>
@@ -1727,7 +1734,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
               <div style={{...lbl,color:"var(--or)"}}><i className="ti ti-target" style={{fontSize:11,marginRight:3}}/>Người nhận KPI</div>
               <KpiPicker staff={staff} value={cart.kpi}
                 onChange={id=>setCart(c=>({...c,kpi:id}))}
-                inShiftIds={new Set(shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").map(a=>a.staff_id))}
+                inShiftIds={new Set(shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off" && saMatchDay(a,todayISO())).map(a=>a.staff_id))}
                 inp={inp}/>
             </div>
           </div>
@@ -3135,7 +3142,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
   const shippers = currentShift
     ? staff.filter(s=>{
         if (!s.active) return false;
-        const a = shiftAssignments.find(x=>x.shift_id===currentShift.id && x.staff_id===s.id);
+        const a = shiftAssignments.find(x=>x.shift_id===currentShift.id && x.staff_id===s.id && saMatchDay(x,todayISO()));
         return a ? a.role==="shipper" : false;
       })
     : [];
@@ -3674,7 +3681,7 @@ function ReportScreen({orders:allOrders,staff,products,shift,toast,viewDate,setV
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
           <div>
             <div style={{fontSize:14,fontWeight:800,color:"#212121"}}>Báo cáo ngày {isoToVN(viewDate)} {viewDate===todayISO()?`· ${shift.name}`:""}</div>
-            <div style={{fontSize:11,color:"#767676"}}>{isoWeekday(viewDate)} · Trưởng ca: {(()=>{const a=shiftAssignments.find(x=>x.shift_id===currentShift?.id&&x.role==="truong_ca");return a?(staff.find(s=>s.id===a.staff_id)?.name||"—"):"—";})()}</div>
+            <div style={{fontSize:11,color:"#767676"}}>{isoWeekday(viewDate)} · Trưởng ca: {(()=>{const a=shiftAssignments.find(x=>x.shift_id===currentShift?.id&&x.role==="truong_ca"&&saMatchDay(x,viewDate));return a?(staff.find(s=>s.id===a.staff_id)?.name||"—"):"—";})()}</div>
           </div>
           <button onClick={exportCSV} className="btn-pri" style={{display:"flex",alignItems:"center",gap:6,padding:"9px 18px",borderRadius:8,fontSize:12}}>
             <i className="ti ti-download"/>Xuất CSV
@@ -4001,9 +4008,11 @@ function SettingsScreen({products,setProducts,staff,setStaff,zones,setZones,pick
 function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,deleteAssignment,staff,toast}){
   const [addShift,setAddShift] = useState(false);
   const [sf,setSf] = useState({name:"",start_at:"",end_at:""});
-  const [pickerFor,setPickerFor] = useState(null);   // {shift_id}
-  const [view,setView] = useState("board");           // board | role | calendar | matrix
-  const [roleAddFor,setRoleAddFor] = useState(null);  // {shift_id, role} cho role-view
+  // v1.20: phân ca THEO NGÀY + chế độ sửa/lưu (tránh sửa nhầm)
+  const [day,setDay] = useState(()=>todayISO());      // ngày đang phân
+  const [editing,setEditing] = useState(false);        // bật mới sửa được
+  const [draft,setDraft] = useState([]);               // nháp: [{shift_id,staff_id,role}]
+  const [copyFrom,setCopyFrom] = useState("");         // copy phân công từ ngày khác
 
   const submitShift = () => {
     if (!sf.name.trim()) { toast("Nhập tên ca","warn"); return; }
@@ -4021,11 +4030,35 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
   };
   const updateShift = (sh,k,v) => setShifts(prev=>prev.map(x=>x.id===sh.id?{...x,[k]:v}:x));
 
-  const getRole = (shift_id, staff_id) => {
-    const a = shiftAssignments.find(x=>x.shift_id===shift_id && x.staff_id===staff_id);
-    return a ? a.role : "off";
+  // Nguồn hiển thị ô: đang sửa → draft; ngược lại → phân công ĐÃ LƯU của 'day'
+  const committed = shiftAssignments.filter(a=>a.day===day && a.role!=="off");
+  const cur = editing ? draft : committed;
+  const cellStaff  = (shift_id, role) => cur.filter(a=>a.shift_id===shift_id && a.role===role);
+  const inShiftSet = (shift_id) => new Set(cur.filter(a=>a.shift_id===shift_id).map(a=>a.staff_id));
+  const draftAdd    = (shift_id, staff_id, role) => setDraft(d=>[...d.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id)),{shift_id,staff_id,role}]);
+  const draftRemove = (shift_id, staff_id) => setDraft(d=>d.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id)));
+  const startEdit = () => { setDraft(committed.map(a=>({shift_id:a.shift_id,staff_id:a.staff_id,role:a.role}))); setEditing(true); };
+  const cancelEdit = () => { setEditing(false); setDraft([]); setCopyFrom(""); };
+  const saveEdit = async () => {
+    const k = a => `${a.shift_id}_${a.staff_id}`;
+    const dbDay = shiftAssignments.filter(a=>a.day===day);
+    const dbMap = new Map(dbDay.map(a=>[k(a),a.role]));
+    const drMap = new Map(draft.map(a=>[k(a),a.role]));
+    for (const a of draft) if (dbMap.get(k(a))!==a.role) await upsertAssignment(day,a.shift_id,a.staff_id,a.role);
+    for (const a of dbDay) if (!drMap.has(k(a))) await deleteAssignment(day,a.shift_id,a.staff_id);
+    setEditing(false); setDraft([]); setCopyFrom("");
+    toast(`Đã lưu phân ca ${isoToVN(day)}`,"success");
   };
-  const assignmentsOf = shift_id => shiftAssignments.filter(a=>a.shift_id===shift_id && a.role!=="off");
+  const doCopyFrom = src => {
+    if (!src) return;
+    setDraft(shiftAssignments.filter(a=>a.day===src && a.role!=="off").map(a=>({shift_id:a.shift_id,staff_id:a.staff_id,role:a.role})));
+    toast(`Đã nạp phân công từ ${isoToVN(src)} vào nháp — bấm Lưu để áp dụng`,"info");
+  };
+  // dải ngày để xem nhanh lịch theo ngày (badge = số người được phân)
+  const dayCounts = {};
+  shiftAssignments.forEach(a=>{ if(a.day && a.role!=="off") dayCounts[a.day]=(dayCounts[a.day]||0)+1; });
+  const mkOffset = off => { const dt=new Date(); dt.setDate(dt.getDate()+off); return toISO(dt); };
+  const dateStrip = Array.from({length:14},(_,i)=>mkOffset(i-2));
 
   const ROLE_OPTS = [
     {v:"off",       l:"😴 Nghỉ",         c:"#999",       bg:"#fafafa"},
@@ -4104,25 +4137,64 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
         </div>
       </div>
 
-      {/* Toggle view */}
+      {/* v1.20: BẢNG PHÂN CA THEO NGÀY — chỉ giữ 1 view + chế độ sửa/lưu */}
       <div className="card" style={{padding:14}}>
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:8}}>
-          <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>📅 Lịch chia ca trong ngày</div>
-          <div style={{display:"flex",gap:4,background:"#f5f5f5",borderRadius:6,padding:3,flexWrap:"wrap"}}>
-            <button onClick={()=>setView("board")}
-              style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="board"?"#fff":"transparent",color:view==="board"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="board"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>📋 Bảng phân ca</button>
-            <button onClick={()=>setView("role")}
-              style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="role"?"#fff":"transparent",color:view==="role"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="role"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>👥 Theo vai trò</button>
-            <button onClick={()=>setView("calendar")}
-              style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="calendar"?"#fff":"transparent",color:view==="calendar"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="calendar"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>📅 Calendar</button>
-            <button onClick={()=>setView("matrix")}
-              style={{fontSize:11,padding:"6px 12px",border:"none",borderRadius:5,cursor:"pointer",background:view==="matrix"?"#fff":"transparent",color:view==="matrix"?"var(--or)":"#767676",fontWeight:700,boxShadow:view==="matrix"?"0 1px 3px rgba(0,0,0,.08)":"none"}}>📊 Ma trận</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
+          <div style={{fontSize:13,fontWeight:700,color:"#212121",display:"flex",alignItems:"center",gap:7}}>
+            <i className="ti ti-calendar-user" style={{fontSize:17,color:"var(--or)"}}/>Bảng phân công nhân sự
+          </div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,background:"#F1F5F9",borderRadius:"var(--r-md)",padding:"5px 9px"}}>
+              <i className="ti ti-calendar" style={{fontSize:15,color:"var(--or)"}}/>
+              <input type="date" value={day} disabled={editing} onChange={e=>e.target.value&&setDay(e.target.value)}
+                style={{border:"none",background:"transparent",fontSize:12.5,fontWeight:700,color:"#212121",cursor:editing?"not-allowed":"pointer"}}/>
+              <span style={{fontSize:11,color:"var(--mut2)"}}>{isoWeekday(day)}{day===todayISO()?" · hôm nay":""}</span>
+            </div>
+            {!editing
+              ? <button onClick={startEdit} className="btn-pri" style={{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",borderRadius:6,fontSize:12,fontWeight:700}}>
+                  <i className="ti ti-edit" style={{fontSize:14}}/>Sửa bảng</button>
+              : <>
+                  <button onClick={saveEdit} style={{display:"flex",alignItems:"center",gap:5,padding:"7px 14px",borderRadius:6,fontSize:12,fontWeight:800,border:"none",background:"#16A34A",color:"#fff",cursor:"pointer"}}>
+                    <i className="ti ti-device-floppy" style={{fontSize:14}}/>Lưu</button>
+                  <button onClick={cancelEdit} style={{padding:"7px 13px",borderRadius:6,fontSize:12,fontWeight:700,border:"1px solid var(--bd)",background:"#fff",color:"var(--mut2)",cursor:"pointer"}}>Huỷ</button>
+                </>}
           </div>
         </div>
 
-        {/* v1.9: BOARD VIEW — hàng=role, cột=ca, ô=danh sách nhân sự (giống bảng Excel) */}
-        {view==="board"&&(
-          <div style={{overflowX:"auto"}}>
+        {/* Dải ngày — xem nhanh lịch PCNS theo ngày (● = số người được phân) */}
+        <div style={{display:"flex",gap:6,overflowX:"auto",paddingBottom:6,marginBottom:12,opacity:editing?.45:1,pointerEvents:editing?"none":"auto"}}>
+          {dateStrip.map(d=>{
+            const on=d===day, isToday=d===todayISO(), n=dayCounts[d]||0;
+            return (
+              <button key={d} onClick={()=>setDay(d)}
+                style={{flexShrink:0,minWidth:56,padding:"6px 8px",borderRadius:"var(--r-md)",border:`1.5px solid ${on?"var(--or)":"var(--bd)"}`,background:on?"var(--orl)":"#fff",cursor:"pointer",textAlign:"center"}}>
+                <div style={{fontSize:9.5,fontWeight:700,color:on?"var(--or)":"var(--mut2)"}}>{isoWeekday(d).replace("Thứ ","T").replace("Chủ Nhật","CN")}</div>
+                <div style={{fontSize:14,fontWeight:800,color:on?"var(--or)":"#212121",lineHeight:1.1}}>{d.split("-")[2]}</div>
+                <div style={{fontSize:8.5,color:isToday?"var(--or)":"var(--mut2)"}}>{isToday?"hôm nay":isoToVNShort(d)}</div>
+                <div style={{marginTop:2,height:11,fontSize:8.5,fontWeight:800,color:n>0?"#16A34A":"transparent"}}>● {n}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Copy phân công từ ngày khác (chỉ khi đang sửa) */}
+        {editing && (
+          <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12,background:"#FFFBEB",border:"1px solid #FDE68A",borderRadius:"var(--r-md)",padding:"8px 10px",flexWrap:"wrap"}}>
+            <span style={{fontSize:11.5,fontWeight:700,color:"#92400E"}}><i className="ti ti-copy" style={{marginRight:4}}/>Sao chép từ ngày:</span>
+            <input type="date" value={copyFrom} onChange={e=>setCopyFrom(e.target.value)} style={{border:"1px solid var(--bd)",borderRadius:6,padding:"4px 8px",fontSize:12}}/>
+            <button onClick={()=>doCopyFrom(copyFrom)} disabled={!copyFrom}
+              style={{fontSize:11,fontWeight:700,padding:"5px 11px",borderRadius:6,border:"none",background:copyFrom?"var(--or)":"#ccc",color:"#fff",cursor:copyFrom?"pointer":"not-allowed"}}>Nạp vào nháp</button>
+            <span style={{fontSize:10.5,color:"#92400E"}}>· nạp xong vẫn cần bấm <b>Lưu</b></span>
+          </div>
+        )}
+
+        {/* Banner trạng thái */}
+        {editing
+          ? <div style={{marginBottom:10,padding:"8px 11px",background:"#ECFDF5",border:"1px solid #6EE7B7",borderRadius:8,fontSize:11,color:"#065F46",lineHeight:1.55}}><i className="ti ti-pencil" style={{marginRight:5}}/><b>Đang sửa nháp</b> ngày {isoWeekday(day)} {isoToVN(day)} — thêm/bớt thoải mái, chỉ ghi vào hệ thống khi bấm <b>Lưu</b>.</div>
+          : <div style={{marginBottom:10,padding:"8px 11px",background:"#EFF6FF",border:"1px solid #93C5FD",borderRadius:8,fontSize:11,color:"#1E40AF",lineHeight:1.55}}><i className="ti ti-info-circle" style={{marginRight:5}}/>Mỗi ngày phân công riêng. Bấm <b>Sửa bảng</b> để thay đổi ngày {isoToVN(day)}. <b>Ngày chưa phân → thành viên ở trạng thái Nghỉ.</b></div>}
+
+        {/* Bảng: hàng=vai trò, cột=ca */}
+        <div style={{overflowX:"auto"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,minWidth:Math.max(600, 180 + sortedShifts.length*150)}}>
               <thead>
                 <tr style={{background:"linear-gradient(135deg,#1E40AF,#2563EB)",color:"#fff"}}>
@@ -4145,9 +4217,9 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                       </div>
                     </td>
                     {sortedShifts.map(sh=>{
-                      const inCell = shiftAssignments.filter(a=>a.shift_id===sh.id && a.role===roleOpt.v);
-                      const inShift = shiftAssignments.filter(a=>a.shift_id===sh.id && a.role!=="off");
-                      const availableStaff = staff.filter(s=>s.active && !inShift.find(a=>a.staff_id===s.id));
+                      const inCell = cellStaff(sh.id, roleOpt.v);
+                      const used = inShiftSet(sh.id);
+                      const availableStaff = staff.filter(s=>s.active && !used.has(s.id));
                       return (
                         <td key={sh.id} style={{padding:7,verticalAlign:"top",borderRight:"1px solid #f5f5f5",background:roleOpt.bg+"50"}}>
                           <div style={{display:"flex",flexDirection:"column",gap:5,minHeight:40}}>
@@ -4155,17 +4227,21 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                               const s=staff.find(x=>x.id===a.staff_id);
                               if(!s) return null;
                               return (
-                                <button key={s.id} onClick={()=>{if(confirm(`Xoá ${s.name} khỏi ${roleOpt.l} của ${sh.name}?`)) upsertAssignment(sh.id,s.id,"off");}}
-                                  title="Click để xoá khỏi ca"
-                                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"#fff",border:`1px solid ${roleOpt.c}55`,borderRadius:"var(--r-pill)",cursor:"pointer",fontSize:11,textAlign:"left"}}>
+                                <button key={s.id} onClick={()=>{ if(editing) draftRemove(sh.id,s.id); }}
+                                  title={editing?"Bấm để bỏ khỏi ca (nháp)":"Bật Sửa bảng để thay đổi"}
+                                  style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"#fff",border:`1px solid ${roleOpt.c}55`,borderRadius:"var(--r-pill)",cursor:editing?"pointer":"default",fontSize:11,textAlign:"left"}}>
                                   <div style={{width:18,height:18,borderRadius:"50%",background:roleOpt.bg,color:roleOpt.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
                                   <span style={{color:"var(--text)",fontWeight:600,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</span>
+                                  {editing && <i className="ti ti-x" style={{fontSize:12,color:roleOpt.c,flexShrink:0}}/>}
                                 </button>
                               );
                             })}
-                            <StaffCombo staffList={availableStaff} accent={roleOpt.c}
-                              placeholder={inCell.length===0?"+ Gõ tên...":"+ Thêm..."}
-                              onPick={sid=>upsertAssignment(sh.id, sid, roleOpt.v)}/>
+                            {editing && (
+                              <StaffCombo staffList={availableStaff} accent={roleOpt.c}
+                                placeholder={inCell.length===0?"+ Gõ tên...":"+ Thêm..."}
+                                onPick={sid=>draftAdd(sh.id, sid, roleOpt.v)}/>
+                            )}
+                            {!editing && inCell.length===0 && <div style={{fontSize:11,color:"#c4c4c4",padding:"3px 2px"}}>—</div>}
                           </div>
                         </td>
                       );
@@ -4178,309 +4254,10 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
               </tbody>
             </table>
             <div style={{marginTop:12,padding:"10px 12px",background:"linear-gradient(90deg,#EFF6FF,#DBEAFE)",borderRadius:8,fontSize:11,color:"#1E40AF",lineHeight:1.6,border:"1px solid #93C5FD"}}>
-              💡 <b>Bảng phân ca:</b> Hàng = vai trò, cột = ca. Mỗi ô gõ tên để tìm + thêm nhân sự. Click thẻ tên để xoá khỏi ca. Mỗi nhân sự chỉ có 1 vai trò trong 1 ca.
+              💡 <b>Cách dùng:</b> Chọn <b>ngày</b> (hoặc bấm ô ngày ở dải trên) → <b>Sửa bảng</b> → gõ tên thêm người vào từng vai trò/ca, bấm thẻ tên để bỏ → <b>Lưu</b>. Muốn nhanh: dùng <b>Sao chép từ ngày</b> rồi chỉnh lại.
             </div>
-          </div>
-        )}
-
-        {/* ROLE-FIRST VIEW — mỗi ca chia thành buckets theo role */}
-        {view==="role"&&(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:14}}>
-            {sortedShifts.map((sh,shIdx)=>{
-              const assigns = assignmentsOf(sh.id);
-              const activeAssigns = assigns.filter(a=>a.role!=="off");
-              const prevSh = shIdx>0 ? sortedShifts[shIdx-1] : null;
-              const copyFromPrev = () => {
-                if (!prevSh) return;
-                if (!confirm(`Sao chép tất cả phân công từ ${prevSh.name} → ${sh.name}? Ghi đè ca hiện tại.`)) return;
-                const prevA = shiftAssignments.filter(a=>a.shift_id===prevSh.id && a.role!=="off");
-                const curA = shiftAssignments.filter(a=>a.shift_id===sh.id);
-                Promise.all([
-                  ...curA.map(a=>deleteAssignment(sh.id, a.staff_id)),
-                  ...prevA.map(a=>upsertAssignment(sh.id, a.staff_id, a.role))
-                ]).then(()=>toast(`✓ Đã sao chép ${prevA.length} phân công`, "success"));
-              };
-              const clearAll = () => {
-                if (activeAssigns.length===0) return;
-                if (!confirm(`Xoá tất cả ${activeAssigns.length} phân công khỏi ${sh.name}?`)) return;
-                Promise.all(activeAssigns.map(a=>deleteAssignment(sh.id, a.staff_id)))
-                  .then(()=>toast("Đã xoá toàn bộ", "warn"));
-              };
-              return (
-                <div key={sh.id} style={{border:"1.5px solid var(--bd)",borderRadius:12,background:"#fff",overflow:"hidden",boxShadow:"var(--sh-sm)"}}>
-                  <div style={{padding:"11px 13px",background:"linear-gradient(135deg,#EE4D2D 0%,#FF8557 100%)",color:"#fff",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                    <div>
-                      <div style={{fontSize:14,fontWeight:800}}>{sh.name}</div>
-                      <div style={{fontSize:10.5,opacity:.95,marginTop:1}}>{sh.start_at}–{sh.end_at}</div>
-                    </div>
-                    <span style={{fontSize:11,background:"rgba(0,0,0,.18)",padding:"3px 9px",borderRadius:"var(--r-pill)",fontWeight:700}}>{activeAssigns.length} người</span>
-                  </div>
-
-                  <div style={{padding:10,display:"flex",flexDirection:"column",gap:8}}>
-                    {ROLE_NON_OFF.map(roleOpt=>{
-                      const inThisRole = activeAssigns.filter(a=>a.role===roleOpt.v);
-                      const isAdding = roleAddFor && roleAddFor.shift_id===sh.id && roleAddFor.role===roleOpt.v;
-                      const availableStaff = staff.filter(s=>s.active && !assigns.find(a=>a.staff_id===s.id));
-                      return (
-                        <div key={roleOpt.v} style={{border:`1px solid ${roleOpt.c}33`,background:roleOpt.bg,borderRadius:8,padding:"7px 9px"}}>
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:inThisRole.length>0?6:0}}>
-                            <div style={{fontSize:11,fontWeight:800,color:roleOpt.c,letterSpacing:.3}}>
-                              {roleOpt.l} <span style={{opacity:.6,fontWeight:600,marginLeft:3}}>({inThisRole.length})</span>
-                            </div>
-                            <button onClick={()=>setRoleAddFor(isAdding?null:{shift_id:sh.id,role:roleOpt.v})}
-                              disabled={availableStaff.length===0 && !isAdding}
-                              style={{fontSize:10,padding:"3px 9px",border:`1px solid ${roleOpt.c}55`,borderRadius:"var(--r-pill)",background:isAdding?roleOpt.c:"#fff",color:isAdding?"#fff":roleOpt.c,cursor:availableStaff.length===0&&!isAdding?"not-allowed":"pointer",fontWeight:700,opacity:availableStaff.length===0&&!isAdding?.4:1}}>
-                              {isAdding?"✕ Đóng":"+ Thêm"}
-                            </button>
-                          </div>
-
-                          {inThisRole.length>0 && (
-                            <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                              {inThisRole.map(a=>{
-                                const s=staff.find(x=>x.id===a.staff_id);
-                                if(!s) return null;
-                                return (
-                                  <button key={s.id} onClick={()=>{if(confirm(`Xoá ${s.name} khỏi ${roleOpt.l} của ${sh.name}?`)) upsertAssignment(sh.id,s.id,"off");}}
-                                    title="Click để xoá khỏi ca"
-                                    style={{display:"flex",alignItems:"center",gap:5,padding:"4px 9px 4px 4px",background:"#fff",border:`1px solid ${roleOpt.c}55`,borderRadius:"var(--r-pill)",cursor:"pointer",fontSize:11}}>
-                                    <div style={{width:20,height:20,borderRadius:"50%",background:roleOpt.bg,color:roleOpt.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(s.name)}</div>
-                                    <span style={{color:"var(--text)",fontWeight:600}}>{s.name}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          )}
-
-                          {isAdding && (
-                            <div style={{marginTop:7,padding:7,background:"#fff",borderRadius:6,border:`1px dashed ${roleOpt.c}55`}}>
-                              {availableStaff.length===0 ? (
-                                <div style={{fontSize:10.5,color:"var(--mut)",textAlign:"center",padding:"4px 0"}}>Không còn ai để thêm</div>
-                              ) : (
-                                <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                                  {availableStaff.map(s=>{
-                                    const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
-                                    const isDefault = false; // v1.12: bỏ role mặc định
-                                    return (
-                                      <button key={s.id} onClick={()=>{upsertAssignment(sh.id,s.id,roleOpt.v); setRoleAddFor(null);}}
-                                        title={isDefault?"Role mặc định khớp":""}
-                                        style={{display:"flex",alignItems:"center",gap:5,padding:"4px 9px 4px 4px",background:isDefault?roleOpt.bg:"#fff",border:`1px solid ${isDefault?roleOpt.c:"var(--bd)"}`,borderRadius:"var(--r-pill)",cursor:"pointer",fontSize:11}}>
-                                        <div style={{width:20,height:20,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800}}>{inits(s.name)}</div>
-                                        <span style={{color:"var(--text)",fontWeight:600}}>{s.name}</span>
-                                        {isDefault && <span style={{fontSize:9,color:roleOpt.c}}>★</span>}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div style={{padding:"8px 10px",borderTop:"1px solid var(--bd2)",background:"#FAFAFA",display:"flex",gap:6}}>
-                    {prevSh && (
-                      <button onClick={copyFromPrev} title={`Sao chép từ ${prevSh.name}`}
-                        style={{flex:1,fontSize:10.5,padding:"6px 8px",border:"1px solid var(--bd)",borderRadius:6,background:"#fff",color:"var(--or)",cursor:"pointer",fontWeight:700}}>
-                        📋 Copy từ {prevSh.name}
-                      </button>
-                    )}
-                    {activeAssigns.length>0 && (
-                      <button onClick={clearAll}
-                        style={{flex:prevSh?0:1,fontSize:10.5,padding:"6px 11px",border:"1px solid #FCA5A5",borderRadius:6,background:"#fff",color:"var(--err)",cursor:"pointer",fontWeight:700}}>
-                        🗑 Xoá hết
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-            {sortedShifts.length===0 && (
-              <div style={{gridColumn:"1/-1",padding:24,textAlign:"center",color:"var(--mut)",fontSize:12}}>Chưa có ca nào. Bấm "+ Thêm ca" ở đầu trang.</div>
-            )}
-          </div>
-        )}
-
-        {/* CALENDAR VIEW — mỗi card là 1 ca */}
-        {view==="calendar"&&(
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
-            {sortedShifts.map(sh=>{
-              const assigns = assignmentsOf(sh.id);
-              const unassigned = staff.filter(s=>s.active && !assigns.find(a=>a.staff_id===s.id));
-              const isPickerHere = pickerFor===sh.id;
-              return (
-                <div key={sh.id} style={{border:"1.5px solid var(--bd)",borderRadius:10,padding:0,overflow:"hidden",background:"#fff",display:"flex",flexDirection:"column"}}>
-                  <div style={{padding:"10px 12px",background:"linear-gradient(135deg,#EE4D2D 0%,#FF8557 100%)",color:"#fff"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                      <input value={sh.name} onChange={e=>updateShift(sh,"name",e.target.value)}
-                        style={{fontSize:14,fontWeight:800,background:"transparent",border:"none",color:"#fff",padding:0,outline:"none",width:"60%"}}/>
-                      <button onClick={()=>removeShift(sh)} title="Xoá ca"
-                        style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:4,color:"#fff",cursor:"pointer",fontSize:11,padding:"3px 7px"}}>✕</button>
-                    </div>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginTop:5,fontSize:11,opacity:.95}}>
-                      <input type="time" value={sh.start_at} onChange={e=>updateShift(sh,"start_at",e.target.value)}
-                        style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:4,padding:"2px 6px",color:"#fff",fontSize:11,colorScheme:"dark"}}/>
-                      <span>→</span>
-                      <input type="time" value={sh.end_at} onChange={e=>updateShift(sh,"end_at",e.target.value)}
-                        style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:4,padding:"2px 6px",color:"#fff",fontSize:11,colorScheme:"dark"}}/>
-                      <span style={{marginLeft:"auto",fontSize:10,background:"rgba(0,0,0,.2)",padding:"2px 7px",borderRadius:10}}>{assigns.length} người</span>
-                    </div>
-                  </div>
-
-                  <div style={{padding:10,display:"flex",flexDirection:"column",gap:6,minHeight:60}}>
-                    {assigns.length===0&&(
-                      <div style={{padding:"14px 0",textAlign:"center",color:"#bbb",fontSize:11}}>Chưa phân ai vào ca này</div>
-                    )}
-                    {assigns.map(a=>{
-                      const s = staff.find(x=>x.id===a.staff_id);
-                      if (!s) return null;
-                      const opt = optByVal(a.role);
-                      return (
-                        <div key={a.staff_id} style={{display:"flex",alignItems:"center",gap:7,padding:"5px 8px",border:"1px solid #f0f0f0",borderRadius:6,background:"#fafafa"}}>
-                          <div style={{width:26,height:26,borderRadius:"50%",background:opt.bg,color:opt.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9.5,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:11.5,fontWeight:600,color:"#212121",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</div>
-                          </div>
-                          <select value={a.role} onChange={e=>upsertAssignment(sh.id,s.id,e.target.value)}
-                            style={{fontSize:10,padding:"3px 6px",border:`1px solid ${opt.c}40`,borderRadius:4,background:opt.bg,color:opt.c,fontWeight:700,cursor:"pointer"}}>
-                            {ROLE_NON_OFF.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-                          </select>
-                          <button onClick={()=>upsertAssignment(sh.id,s.id,"off")} title="Bỏ khỏi ca"
-                            style={{background:"none",border:"none",color:"#999",cursor:"pointer",fontSize:14,padding:0}}>✕</button>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  <div style={{padding:"6px 10px 10px",borderTop:"1px dashed #f0f0f0"}}>
-                    {!isPickerHere ? (
-                      <button onClick={()=>setPickerFor(sh.id)} disabled={unassigned.length===0}
-                        style={{width:"100%",padding:"7px",border:"1px dashed var(--bd)",borderRadius:6,background:"#fff",cursor:unassigned.length===0?"not-allowed":"pointer",color:unassigned.length===0?"#ccc":"var(--or)",fontSize:11,fontWeight:700}}>
-                        {unassigned.length===0?"Đã phân hết nhân sự":"+ Thêm nhân sự vào ca"}
-                      </button>
-                    ) : (
-                      <div style={{background:"#FFF4F0",border:"1px solid #FFD4C2",borderRadius:6,padding:8}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                          <div style={{fontSize:10,color:"#767676",fontWeight:700}}>Chọn nhân sự & role:</div>
-                          <button onClick={()=>setPickerFor(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#999",fontSize:14}}>✕</button>
-                        </div>
-                        <div style={{display:"flex",flexDirection:"column",gap:4,maxHeight:200,overflowY:"auto"}}>
-                          {unassigned.map(s=>{
-                            const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
-                            return (
-                              <div key={s.id} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 6px",background:"#fff",borderRadius:5}}>
-                                <div style={{width:24,height:24,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
-                                <span style={{flex:1,fontSize:11,color:"#212121",fontWeight:600,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</span>
-                                <select onChange={e=>{if(e.target.value){upsertAssignment(sh.id,s.id,e.target.value);setPickerFor(null);}}}
-                                  defaultValue=""
-                                  style={{fontSize:10,padding:"3px 6px",border:"1px solid var(--bd)",borderRadius:4,cursor:"pointer"}}>
-                                  <option value="" disabled>Chọn role…</option>
-                                  {ROLE_NON_OFF.map(o=><option key={o.v} value={o.v}>{o.l}</option>)}
-                                </select>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* MATRIX VIEW — bảng nhân sự × ca */}
-        {view==="matrix"&&(
-          <>
-          <div style={{overflowX:"auto"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,minWidth:600}}>
-              <thead>
-                <tr>
-                  <th style={{padding:"8px",textAlign:"left",fontSize:10,color:"#999",fontWeight:700,borderBottom:"1px solid #f0f0f0",letterSpacing:".3px",position:"sticky",left:0,background:"#fff",zIndex:1,minWidth:140}}>Nhân sự</th>
-                  {sortedShifts.map((sh,idx)=>{
-                    const prevSh = idx>0 ? sortedShifts[idx-1] : null;
-                    const copyFromPrev = () => {
-                      if (!prevSh) return;
-                      if (!confirm(`Sao chép tất cả phân công từ ${prevSh.name} → ${sh.name}? Sẽ ghi đè ca hiện tại.`)) return;
-                      const prevAssigns = shiftAssignments.filter(a=>a.shift_id===prevSh.id && a.role!=="off");
-                      // Xoá ca đích trước
-                      const curAssigns = shiftAssignments.filter(a=>a.shift_id===sh.id);
-                      Promise.all([
-                        ...curAssigns.map(a=>deleteAssignment(sh.id, a.staff_id)),
-                        ...prevAssigns.map(a=>upsertAssignment(sh.id, a.staff_id, a.role))
-                      ]).then(()=>toast(`✓ Đã sao chép ${prevAssigns.length} phân công`, "success"));
-                    };
-                    return (
-                      <th key={sh.id} style={{padding:"8px",textAlign:"center",fontSize:10,color:"#999",fontWeight:700,borderBottom:"1px solid #f0f0f0",minWidth:130}}>
-                        <div>{sh.name}</div>
-                        <div style={{fontWeight:400,color:"#ccc",marginBottom:3}}>{sh.start_at}–{sh.end_at}</div>
-                        {prevSh && (
-                          <button onClick={copyFromPrev} title={`Sao chép từ ${prevSh.name}`}
-                            style={{fontSize:9,padding:"2px 7px",border:"1px solid var(--bd)",borderRadius:"var(--r-pill)",background:"#fff",color:"var(--or)",cursor:"pointer",fontWeight:700}}>
-                            📋 Copy ←
-                          </button>
-                        )}
-                      </th>
-                    );
-                  })}
-                </tr>
-              </thead>
-              <tbody>
-                {staff.filter(s=>s.active).map(s=>{
-                  const [tc,bg]=(s.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
-                  return (
-                    <tr key={s.id} style={{borderBottom:"1px solid #f8f8f8"}}>
-                      <td style={{padding:"9px 8px",position:"sticky",left:0,background:"#fff",zIndex:1}}>
-                        <div style={{display:"flex",alignItems:"center",gap:8}}>
-                          <div style={{width:28,height:28,borderRadius:"50%",background:bg,color:tc,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800}}>{inits(s.name)}</div>
-                          <div>
-                            <div style={{fontSize:12,fontWeight:700,color:"#212121"}}>{s.name}</div>
-                            <div style={{fontSize:9.5,color:tc,fontWeight:600}}>{s.isAdmin?"Admin":"Thành viên"}</div>
-                          </div>
-                        </div>
-                      </td>
-                      {sortedShifts.map(sh=>{
-                        const role = getRole(sh.id, s.id);
-                        const opt = optByVal(role);
-                        // v1.5: click cycle qua các role
-                        const cycle = () => {
-                          const idx = ROLE_OPTS.findIndex(o=>o.v===role);
-                          const next = ROLE_OPTS[(idx+1)%ROLE_OPTS.length].v;
-                          upsertAssignment(sh.id, s.id, next);
-                        };
-                        return (
-                          <td key={sh.id} style={{padding:"6px 4px",textAlign:"center"}}>
-                            <button onClick={cycle} onContextMenu={e=>{e.preventDefault(); upsertAssignment(sh.id,s.id,"off");}}
-                              title="Click: chuyển role tiếp · Chuột phải: đặt Nghỉ"
-                              style={{fontSize:11,padding:"7px 9px",border:`1.5px solid ${opt.bg==="#fafafa"?"#e0e0e0":opt.c+"55"}`,borderRadius:6,background:opt.bg,color:opt.c,fontWeight:700,cursor:"pointer",minWidth:108,transition:"transform .1s"}}
-                              onMouseDown={e=>e.currentTarget.style.transform="scale(0.96)"}
-                              onMouseUp={e=>e.currentTarget.style.transform="scale(1)"}
-                              onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
-                              {opt.l}
-                            </button>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
-                {staff.filter(s=>s.active).length===0 && (
-                  <tr><td colSpan={shifts.length+1} style={{padding:"20px",textAlign:"center",color:"#999",fontSize:12}}>Chưa có nhân sự đang hoạt động</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-          <div style={{marginTop:10,padding:"10px 12px",background:"linear-gradient(90deg,#FFF4F0,#FFF8F4)",borderRadius:8,fontSize:11,color:"#92400e",lineHeight:1.6,border:"1px solid #FCD34D"}}>
-            ⚡ <b>Mẹo nhanh:</b> Click ô → cycle qua role tiếp theo · Chuột phải → đặt <b>Nghỉ</b> · Nút <b>📋 Copy ←</b> ở cột → sao chép toàn bộ phân công từ ca trước
-          </div>
-          </>
-        )}
-
-        <div style={{marginTop:12,padding:"10px 12px",background:"#fafafa",borderRadius:6,fontSize:10.5,color:"#767676",lineHeight:1.6}}>
-          💡 Mỗi thay đổi tự lưu lên cloud. Khi đến giờ ca mới, role của user sẽ tự cập nhật trên mọi thiết bị. Bấm <b>Calendar</b> để xem dạng card, <b>Ma trận</b> để gán nhanh.
         </div>
+
       </div>
     </>
   );
@@ -5380,26 +5157,27 @@ function App(){
     syncToDb(prev, next, "shifts", "id", s=>s);
   },[]);
   /* Composite key — không dùng diff wrapper, gọi DB trực tiếp + optimistic update */
-  const upsertAssignment = useCallback(async (shift_id, staff_id, role) => {
-    // Role "off" = xoá phân công khỏi ca (không lưu rỗng vào DB)
+  // v1.20: phân ca theo NGÀY — khóa là (day, shift_id, staff_id)
+  const upsertAssignment = useCallback(async (day, shift_id, staff_id, role) => {
+    // Role "off" = xoá phân công khỏi ca ngày đó (không lưu rỗng vào DB)
     if (role === "off") {
-      _setShiftAssignments(prev=>prev.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id)));
-      const {error} = await sb.from("shift_assignments").delete().match({shift_id,staff_id});
+      _setShiftAssignments(prev=>prev.filter(x=>!(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id)));
+      const {error} = await sb.from("shift_assignments").delete().match({day,shift_id,staff_id});
       if (error) toast(`Lỗi xoá phân ca: ${error.message}`,"error");
       return;
     }
     _setShiftAssignments(prev=>{
-      const ex = prev.find(x=>x.shift_id===shift_id && x.staff_id===staff_id);
+      const ex = prev.find(x=>x.day===day && x.shift_id===shift_id && x.staff_id===staff_id);
       return ex
-        ? prev.map(x=>(x.shift_id===shift_id && x.staff_id===staff_id)?{...x,role}:x)
-        : [...prev,{shift_id,staff_id,role}];
+        ? prev.map(x=>(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id)?{...x,role}:x)
+        : [...prev,{day,shift_id,staff_id,role}];
     });
-    const {error} = await sb.from("shift_assignments").upsert({shift_id,staff_id,role});
+    const {error} = await sb.from("shift_assignments").upsert({day,shift_id,staff_id,role});
     if (error) toast(`Lỗi phân ca: ${error.message}`,"error");
   },[]);
-  const deleteAssignment = useCallback(async (shift_id, staff_id) => {
-    _setShiftAssignments(prev=>prev.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id)));
-    const {error} = await sb.from("shift_assignments").delete().match({shift_id,staff_id});
+  const deleteAssignment = useCallback(async (day, shift_id, staff_id) => {
+    _setShiftAssignments(prev=>prev.filter(x=>!(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id)));
+    const {error} = await sb.from("shift_assignments").delete().match({day,shift_id,staff_id});
     if (error) toast(`Lỗi xoá phân ca: ${error.message}`,"error");
   },[]);
 
@@ -5713,13 +5491,13 @@ function App(){
       })
       .on("postgres_changes",{event:"*",schema:"public",table:"shift_assignments"},p=>{
         if (p.eventType==="DELETE") {
-          _setShiftAssignments(arr=>arr.filter(x=>!(x.shift_id===p.old.shift_id && x.staff_id===p.old.staff_id)));
+          _setShiftAssignments(arr=>arr.filter(x=>!saSame(x,p.old)));
         } else {
           const r = p.new;
           _setShiftAssignments(arr=>{
-            const ex = arr.find(x=>x.shift_id===r.shift_id && x.staff_id===r.staff_id);
+            const ex = arr.find(x=>saSame(x,r));
             if (ex && JSON.stringify(ex)===JSON.stringify(r)) return arr;
-            return ex ? arr.map(x=>(x.shift_id===r.shift_id && x.staff_id===r.staff_id)?r:x) : [...arr,r];
+            return ex ? arr.map(x=>saSame(x,r)?r:x) : [...arr,r];
           });
         }
       })
@@ -5829,7 +5607,7 @@ function App(){
   const effectiveRole = effectiveRoleEarly;
 
   const SCREENS={
-    dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off").length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
+    dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off" && saMatchDay(a,todayISO())).length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
                comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder} viewDate={viewDate} setViewDate={setViewDate}/>},
     order:    {title:"Trực đơn",         sub:"Nhận & tạo đơn hàng · Tách KPI người sale",
                comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
@@ -6007,18 +5785,19 @@ function App(){
 }
 
 function RestScreen({user,currentShift,shifts,shiftAssignments,onLogout}){
-  // Tìm ca tiếp theo user có làm
-  const nextShift = (()=>{
+  // v1.20: ca GẦN NHẤT theo NGÀY — ưu tiên ca sắp tới, không có thì ca vừa rồi
+  const nearest = (()=>{
     if (!shifts.length) return null;
-    const ordered = [...shifts].sort((a,b)=>(a.sort||0)-(b.sort||0));
-    const now = new Date(); const m = now.getHours()*60+now.getMinutes();
-    const curIdx = currentShift ? ordered.findIndex(s=>s.id===currentShift.id) : -1;
-    for (let i=1; i<=ordered.length; i++){
-      const s = ordered[(curIdx+i)%ordered.length];
-      const a = shiftAssignments.find(x=>x.shift_id===s.id && x.staff_id===user.id);
-      if (a && a.role !== "off") return {shift:s, role:a.role};
-    }
-    return null;
+    const shById = {}; shifts.forEach(s=>shById[s.id]=s);
+    const now = Date.now();
+    const mine = (shiftAssignments||[])
+      .filter(a=>a.staff_id===user.id && a.role!=="off" && a.day && shById[a.shift_id])
+      .map(a=>{ const s=shById[a.shift_id]; return {s,day:a.day,role:a.role,start:new Date(`${a.day}T${(s.start_at||"00:00")}:00`).getTime()}; });
+    if (!mine.length) return null;
+    const up = mine.filter(x=>x.start>=now).sort((p,q)=>p.start-q.start);
+    if (up.length) return {...up[0],future:true};
+    const past = mine.filter(x=>x.start<now).sort((p,q)=>q.start-p.start);
+    return past.length ? {...past[0],future:false} : null;
   })();
   const [tc,bg] = (user.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
   return (
@@ -6036,11 +5815,16 @@ function RestScreen({user,currentShift,shifts,shiftAssignments,onLogout}){
             <div style={{fontSize:11,color:tc,fontWeight:700}}>{user.isAdmin?"Admin":"Thành viên"}</div>
           </div>
         </div>
-        {nextShift && (
-          <div style={{padding:"12px 14px",background:"#FFF4F0",borderRadius:10,marginBottom:16,textAlign:"left"}}>
-            <div style={{fontSize:10,color:"var(--or)",fontWeight:800,marginBottom:3,letterSpacing:".3px"}}>CA TIẾP THEO CỦA BẠN</div>
-            <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>{nextShift.shift.name} · {nextShift.shift.start_at}–{nextShift.shift.end_at}</div>
-            <div style={{fontSize:11,color:"#767676",marginTop:2}}>Vai trò: <b style={{color:RC[nextShift.role]?.[0]||"#475569"}}>{RL[nextShift.role]||nextShift.role}</b></div>
+        {nearest ? (
+          <div style={{padding:"12px 14px",background:nearest.future?"#FFF4F0":"#F1F5F9",borderRadius:10,marginBottom:16,textAlign:"left",border:`1px solid ${nearest.future?"#FFD4C2":"#E2E8F0"}`}}>
+            <div style={{fontSize:10,color:nearest.future?"var(--or)":"#475569",fontWeight:800,marginBottom:3,letterSpacing:".3px"}}>{nearest.future?"⏭ CA SẮP TỚI CỦA BẠN":"⏮ CA GẦN NHẤT (VỪA RỒI)"}</div>
+            <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>{nearest.s.name} · {nearest.s.start_at}–{nearest.s.end_at}</div>
+            <div style={{fontSize:11.5,color:"#212121",marginTop:2,fontWeight:600}}>📅 {isoWeekday(nearest.day)}, {isoToVN(nearest.day)}{nearest.day===todayISO()?" · hôm nay":""}</div>
+            <div style={{fontSize:11,color:"#767676",marginTop:2}}>Vai trò: <b style={{color:RC[nearest.role]?.[0]||"#475569"}}>{RL[nearest.role]||nearest.role}</b></div>
+          </div>
+        ) : (
+          <div style={{padding:"12px 14px",background:"#F1F5F9",borderRadius:10,marginBottom:16,fontSize:11.5,color:"#64748B",lineHeight:1.5}}>
+            Bạn chưa được phân ca nào. Liên hệ Admin/Trưởng ca để được xếp lịch.
           </div>
         )}
         <div style={{display:"flex",gap:8,justifyContent:"center"}}>

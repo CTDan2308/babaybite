@@ -6,6 +6,20 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.20.0] — 2026-06-06 (+07)
+
+### ⚠️ Migration bắt buộc
+- Phải chạy lại `supabase-schema.sql` (idempotent) để thêm cột **`day`** vào `shift_assignments` (đổi khóa chính sang `(day, shift_id, staff_id)`). Bản ghi cũ được gán `day = ngày chạy migration`. Chưa migrate thì code mới tạm thời coi bản ghi cũ áp cho mọi ngày để tránh khóa đăng nhập.
+
+### Added
+- **Phân công nhân sự THEO NGÀY:** mỗi ngày có bảng phân ca riêng. Role hiệu lực của thành viên (`getEffectiveRole`) nay khớp theo **đúng ngày hôm nay**. **Ngày chưa phân → thành viên ở trạng thái Nghỉ** (đúng lựa chọn "bắt buộc phân từng ngày").
+- **Chế độ Sửa/Lưu bảng phân ca:** mặc định bảng ở chế độ xem (không sửa nhầm). Bấm **Sửa bảng** để vào nháp, thêm/bớt thoải mái, rồi **Lưu** mới ghi lên hệ thống; có nút **Huỷ**. Thêm **Sao chép phân công từ ngày khác** vào nháp.
+- **Xem lịch PCNS theo ngày & theo ca:** dải ngày cuộn ngang (badge số người được phân mỗi ngày) + bảng vai trò × ca cho ngày đang chọn.
+- **Màn Nghỉ hiển thị "ca gần nhất":** ưu tiên **ca sắp tới** của nhân sự (kèm thứ/ngày, giờ, vai trò); không có lịch tương lai thì hiện **ca vừa làm gần nhất**.
+
+### Changed
+- Màn **Lịch ca & Phân công** chỉ còn **một** giao diện "Bảng phân ca" (bỏ các view Theo vai trò / Calendar / Ma trận cho gọn).
+
 ## [1.19.0] — 2026-06-06 (+07)
 
 ### Changed
