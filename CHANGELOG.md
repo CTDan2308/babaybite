@@ -6,6 +6,16 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.22.0] — 2026-06-08 (+07)
+
+### ⚠️ Migration
+- Chạy lại `supabase-schema.sql` (idempotent) để đổi **khóa chính** `shift_assignments` sang `(day, shift_id, staff_id, role)` — cho phép 1 người nhiều role. Dữ liệu cũ giữ nguyên.
+
+### Added
+- **Một nhân sự đảm nhiệm NHIỀU role trong cùng 1 ca:** ở Bảng phân ca, có thể thêm cùng một người vào nhiều ô vai trò của cùng một ca (vd vừa Trực đơn vừa Shipper).
+- **Quyền truy cập hợp nhất:** người có nhiều role được vào **tất cả** màn của các role đó. Nếu có >1 role (hoặc là trưởng ca/admin) → dùng giao diện sidebar đầy đủ để chuyển giữa các màn; nếu đúng 1 role thao tác (trực đơn/pha chế/shipper) vẫn giữ app chuyên biệt như cũ.
+- Màn **Nhân sự & KPI** và màn **Nghỉ** hiển thị đủ các vai trò của mỗi người trong ca.
+
 ## [1.21.0] — 2026-06-06 (+07)
 
 ### ⚠️ Migration

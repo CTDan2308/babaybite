@@ -134,13 +134,13 @@ CREATE TABLE IF NOT EXISTS shifts (
 );
 
 -- Phân công role cho từng staff trong từng ca, THEO NGÀY (v1.20)
--- Khóa chính (day, shift_id, staff_id): mỗi ngày phân công riêng biệt.
+-- v1.22: khóa chính (day, shift_id, staff_id, ROLE) → 1 người có thể NHIỀU role trong cùng ca.
 CREATE TABLE IF NOT EXISTS shift_assignments (
   day        DATE     NOT NULL DEFAULT CURRENT_DATE,
   shift_id   SMALLINT NOT NULL REFERENCES shifts(id) ON DELETE CASCADE,
   staff_id   BIGINT   NOT NULL REFERENCES staff(id)  ON DELETE CASCADE,
   role       TEXT     NOT NULL,
-  PRIMARY KEY (day, shift_id, staff_id)
+  PRIMARY KEY (day, shift_id, staff_id, role)
 );
 
 -- ── MIGRATION v1.20 (idempotent): bảng cũ chỉ có (shift_id, staff_id) → thêm cột 'day' ──
@@ -148,9 +148,21 @@ DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                  WHERE table_name='shift_assignments' AND column_name='day') THEN
     ALTER TABLE shift_assignments ADD COLUMN day DATE NOT NULL DEFAULT CURRENT_DATE;
-    -- đổi khóa chính sang (day, shift_id, staff_id)
     ALTER TABLE shift_assignments DROP CONSTRAINT IF EXISTS shift_assignments_pkey;
     ALTER TABLE shift_assignments ADD PRIMARY KEY (day, shift_id, staff_id);
+  END IF;
+END $$;
+
+-- ── MIGRATION v1.22 (idempotent): đưa 'role' vào khóa chính để 1 người nhiều role/ca ──
+DO $$ BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname='shift_assignments_pkey'
+      AND conrelid='shift_assignments'::regclass
+      AND array_length(conkey,1)=3   -- PK cũ chỉ 3 cột (day, shift_id, staff_id)
+  ) THEN
+    ALTER TABLE shift_assignments DROP CONSTRAINT shift_assignments_pkey;
+    ALTER TABLE shift_assignments ADD PRIMARY KEY (day, shift_id, staff_id, role);
   END IF;
 END $$;
 

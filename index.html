@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.21.0</title>
+<title>BaBayBite v1.22.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -282,7 +282,7 @@ const roleInShift = (staffId, staffIsAdmin, shiftId, shiftAssignments, day=null)
 /* v1.20: phân ca theo NGÀY. row.day=null = dữ liệu cũ trước migration → áp cho mọi ngày
    (tránh khoá đăng nhập trong lúc chuyển đổi). Sau migration mọi row đều có day. */
 const saMatchDay = (a, day) => a.day==null || a.day===day;
-const saSame = (a, b) => (a.day??null)===(b.day??null) && a.shift_id===b.shift_id && a.staff_id===b.staff_id;
+const saSame = (a, b) => (a.day??null)===(b.day??null) && a.shift_id===b.shift_id && a.staff_id===b.staff_id && a.role===b.role; // v1.22: PK gồm role (1 người nhiều role/ca)
 const assignsOnDay = (sas, shift_id, day) => (sas||[]).filter(a=>a.shift_id===shift_id && a.role!=="off" && saMatchDay(a,day));
 const CL_FALLBACK = {pha_che:"☕ Đồ pha chế",san_co:"📦 Đồ sẵn có",kho:"⚡ Dùng ngay"};
 
@@ -295,7 +295,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.21.0";
+const VERSION = "1.22.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -329,6 +329,20 @@ const getEffectiveRole = (currentShift, shiftAssignments, user, adminAsMember=fa
   const a = shiftAssignments.find(x => x.shift_id===currentShift.id && x.staff_id===user.id && saMatchDay(x,today));
   return a ? a.role : "off";
 };
+/* v1.22: 1 nhân sự có thể nhiều role trong 1 ca → trả về MẢNG role (theo độ ưu tiên).
+   primaryRole = role chính (chọn shell/màu/presence). allowed = hợp các ROLE_PERMS. */
+const ROLE_PRIORITY = ["admin","truong_ca","truc_don","pha_che","shipper"];
+const getEffectiveRoles = (currentShift, shiftAssignments, user, adminAsMember=false) => {
+  if (!user) return [];
+  if (user.isAdmin === true && !adminAsMember) return ["admin"];
+  if (!currentShift) return [];
+  const today = todayISO();
+  const roles = (shiftAssignments||[])
+    .filter(x => x.shift_id===currentShift.id && x.staff_id===user.id && saMatchDay(x,today) && x.role && x.role!=="off")
+    .map(x=>x.role);
+  return [...new Set(roles)].sort((a,b)=>ROLE_PRIORITY.indexOf(a)-ROLE_PRIORITY.indexOf(b));
+};
+const primaryRole = roles => (roles && roles.length) ? roles[0] : "off";
 
 /* ══════════════════════════════════════════════════════════
    UTILS
@@ -1568,10 +1582,11 @@ function EditOrderModal({order,products,categories,zones,pickupLocs=[],staff,cur
   );
 }
 
-function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,effectiveRole,zones,pickupLocs=[],categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
+function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,effectiveRole,effectiveRoles=[],zones,pickupLocs=[],categories,toast,shiftAssignments=[],currentShift=null,deleteOrder=null}){
   const isAdmin = currentUser?.isAdmin === true;
   const erole = effectiveRole || currentUser?.isAdmin && "admin" || "off";
-  const canEditOrder = ["truong_ca","truc_don","admin"].includes(erole);
+  const roleSet = (effectiveRoles&&effectiveRoles.length)?effectiveRoles:[erole]; // v1.22: nhiều role/ca
+  const canEditOrder = roleSet.some(r=>["truong_ca","truc_don","admin"].includes(r));
   const [editId,setEditId] = useState(null);
   const [cancelId,setCancelId] = useState(null);
   const [q,setQ] = useState("");            // v1.15: tìm đơn đang xử lý
@@ -3154,12 +3169,13 @@ function ShipperApp({orders,currentUser,staff,pickup,startShip,complete,cancel,d
   );
 }
 
-function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effectiveRole,toast,shiftAssignments=[],currentShift=null,appConfig={}}){
+function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effectiveRole,effectiveRoles=[],toast,shiftAssignments=[],currentShift=null,appConfig={}}){
   const [returnFor,setReturnFor] = useState(null);
   // v1.9.1: 2-step assign — chọn shipper rồi mới chốt
   const [pendingPick,setPendingPick] = useState({}); // {[orderId]: shipperId}
-  const isShipper   = effectiveRole==="shipper";
-  const canAssign   = effectiveRole==="truong_ca" || effectiveRole==="admin" || effectiveRole==="truc_don";
+  const roleSet     = (effectiveRoles&&effectiveRoles.length)?effectiveRoles:[effectiveRole]; // v1.22: nhiều role/ca
+  const isShipper   = roleSet.includes("shipper");
+  const canAssign   = roleSet.some(r=>["truong_ca","admin","truc_don"].includes(r));
 
   const ship    = orders.filter(o=>o.type==="ship");
   // v1.12: shipper = người được phân vai "shipper" trong ca hiện tại (role theo ca, không còn role cố định)
@@ -3534,6 +3550,13 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
   };
   // v1.7: role thực tế trong ca hiện tại
   const shiftRole = s => roleInShift(s.id, s.isAdmin, currentShift?.id, shiftAssignments);
+  // v1.22: tất cả role của 1 người trong ca hiện tại (1 người có thể nhiều role)
+  const rolesInShift = s => {
+    if (s.isAdmin) return ["admin"];
+    if (!currentShift) return [];
+    return [...new Set(shiftAssignments.filter(a=>a.shift_id===currentShift.id && a.staff_id===s.id && saMatchDay(a,todayISO()) && a.role && a.role!=="off").map(a=>a.role))]
+      .sort((a,b)=>ROLE_PRIORITY.indexOf(a)-ROLE_PRIORITY.indexOf(b));
+  };
   return (
     <div style={{flex:1,overflowY:"auto",padding:16,background:"var(--bg)"}}>
       <DateNav date={viewDate} setDate={setViewDate} countLabel={`KPI tính theo đơn HOÀN THÀNH trong ngày · ${dayOrders.filter(o=>o.st==="hoan_thanh").length} đơn xong`}/>
@@ -3544,7 +3567,7 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
       <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:10,marginBottom:14}}>
         {["truong_ca","truc_don","pha_che","shipper","admin"].map(role=>{
           const [tc]=RC[role]||["#475569"];
-          const cnt = staff.filter(s=>shiftRole(s)===role).length;
+          const cnt = staff.filter(s=>rolesInShift(s).includes(role)).length;
           return (
             <div key={role} className="card" style={{padding:"14px",textAlign:"center"}}>
               <div style={{fontSize:24,fontWeight:800,color:tc,marginBottom:2}}>{cnt}</div>
@@ -3565,11 +3588,11 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
           </thead>
           <tbody>
             {staff.map(s=>{
-              const sr = shiftRole(s);                 // role thực tế ca này
-              const off = sr === "off";
+              const srs = rolesInShift(s);             // tất cả role ca này (v1.22)
+              const off = srs.length === 0;
+              const sr = off ? "off" : srs[0];
               const [tc,bg] = off ? ["#64748B","#F1F5F9"] : (RC[sr]||["#475569","#f5f5f5"]);
               const k=kpi(s.id);
-              const switched = !off && s.isAdmin && sr !== "admin"; // admin đang làm vai trò theo ca
               return (
                 <tr key={s.id} style={{borderBottom:"1px solid #f8f8f8",opacity:s.active && !off ? 1 : .55}}>
                   <td style={{padding:"9px 8px"}}>
@@ -3582,9 +3605,8 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
                     {off ? (
                       <span title={`Mặc định: ${(s.isAdmin?"Admin":"Thành viên")}`} style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:"#F1F5F9",color:"#64748B",fontWeight:700,fontStyle:"italic"}}>Ngoài ca</span>
                     ) : (
-                      <span style={{display:"inline-flex",alignItems:"center",gap:4}}>
-                        <span style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:bg,color:tc,fontWeight:700}}>{RL[sr]}</span>
-                        {switched && <span title={`Mặc định: ${(s.isAdmin?"Admin":"Thành viên")}`} style={{fontSize:9,padding:"1px 5px",borderRadius:"var(--r-pill)",background:"#FFF4F0",color:"var(--or)",fontWeight:800}}>theo ca</span>}
+                      <span style={{display:"inline-flex",alignItems:"center",gap:4,flexWrap:"wrap"}}>
+                        {srs.map(r=>{const [rtc,rbg]=RC[r]||["#475569","#f5f5f5"];return <span key={r} style={{fontSize:10,padding:"3px 8px",borderRadius:4,background:rbg,color:rtc,fontWeight:700}}>{RL[r]}</span>;})}
                       </span>
                     )}
                   </td>
@@ -3608,8 +3630,9 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
       <div className="card" style={{padding:16}}>
         <div style={{fontSize:13,fontWeight:700,color:"#212121",marginBottom:10}}>🏆 Bảng xếp hạng KPI</div>
         {[...staff].filter(s=>s.active).sort((a,b)=>kpi(b.id).rev-kpi(a.id).rev).map((s,i)=>{
-          const sr = shiftRole(s);
-          const off = sr === "off";
+          const srs = rolesInShift(s);
+          const off = srs.length === 0;
+          const sr = off ? "off" : srs[0];
           const [tc,bg] = off ? ["#64748B","#F1F5F9"] : (RC[sr]||["#475569","#f5f5f5"]);
           const k=kpi(s.id);
           const medal=["🥇","🥈","🥉"][i]||`#${i+1}`;
@@ -3619,7 +3642,7 @@ function StaffScreen({orders,staff,currentShift,shiftAssignments=[],viewDate,set
               <div style={{width:30,height:30,borderRadius:"50%",background:bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,color:tc,fontWeight:800}}>{inits(s.name)}</div>
               <div style={{flex:1}}>
                 <div style={{fontSize:12.5,color:"#212121",fontWeight:700}}>{s.name}</div>
-                <div style={{fontSize:10,color:off?"#94a3b8":"#767676",fontStyle:off?"italic":"normal"}}>{off?"Ngoài ca":RL[sr]}</div>
+                <div style={{fontSize:10,color:off?"#94a3b8":"#767676",fontStyle:off?"italic":"normal"}}>{off?"Ngoài ca":srs.map(r=>RL[r]||r).join(", ")}</div>
               </div>
               <span style={{fontSize:11,color:"#767676"}}>{k.cnt} đơn</span>
               <span style={{fontSize:13,fontWeight:800,color:k.rev>0?"#15803d":"#999",minWidth:100,textAlign:"right"}}>{k.rev>0?fmt(k.rev):"—"}</span>
@@ -4057,19 +4080,19 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
   // Nguồn hiển thị ô: đang sửa → draft; ngược lại → phân công ĐÃ LƯU của 'day'
   const committed = shiftAssignments.filter(a=>a.day===day && a.role!=="off");
   const cur = editing ? draft : committed;
-  const cellStaff  = (shift_id, role) => cur.filter(a=>a.shift_id===shift_id && a.role===role);
-  const inShiftSet = (shift_id) => new Set(cur.filter(a=>a.shift_id===shift_id).map(a=>a.staff_id));
-  const draftAdd    = (shift_id, staff_id, role) => setDraft(d=>[...d.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id)),{shift_id,staff_id,role}]);
-  const draftRemove = (shift_id, staff_id) => setDraft(d=>d.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id)));
+  // v1.22: 1 người có thể ở NHIỀU ô role trong cùng 1 ca → khóa nháp gồm role
+  const cellStaff   = (shift_id, role) => cur.filter(a=>a.shift_id===shift_id && a.role===role);
+  const draftAdd    = (shift_id, staff_id, role) => setDraft(d=> d.find(x=>x.shift_id===shift_id && x.staff_id===staff_id && x.role===role) ? d : [...d,{shift_id,staff_id,role}]);
+  const draftRemove = (shift_id, staff_id, role) => setDraft(d=>d.filter(x=>!(x.shift_id===shift_id && x.staff_id===staff_id && x.role===role)));
   const startEdit = () => { setDraft(committed.map(a=>({shift_id:a.shift_id,staff_id:a.staff_id,role:a.role}))); setEditing(true); };
   const cancelEdit = () => { setEditing(false); setDraft([]); setCopyFrom(""); };
   const saveEdit = async () => {
-    const k = a => `${a.shift_id}_${a.staff_id}`;
-    const dbDay = shiftAssignments.filter(a=>a.day===day);
-    const dbMap = new Map(dbDay.map(a=>[k(a),a.role]));
-    const drMap = new Map(draft.map(a=>[k(a),a.role]));
-    for (const a of draft) if (dbMap.get(k(a))!==a.role) await upsertAssignment(day,a.shift_id,a.staff_id,a.role);
-    for (const a of dbDay) if (!drMap.has(k(a))) await deleteAssignment(day,a.shift_id,a.staff_id);
+    const k = a => `${a.shift_id}_${a.staff_id}_${a.role}`;
+    const dbDay = shiftAssignments.filter(a=>a.day===day && a.role!=="off");
+    const dbSet = new Set(dbDay.map(k));
+    const drSet = new Set(draft.map(k));
+    for (const a of draft) if (!dbSet.has(k(a))) await upsertAssignment(day,a.shift_id,a.staff_id,a.role);
+    for (const a of dbDay) if (!drSet.has(k(a))) await deleteAssignment(day,a.shift_id,a.staff_id,a.role);
     setEditing(false); setDraft([]); setCopyFrom("");
     toast(`Đã lưu phân ca ${isoToVN(day)}`,"success");
   };
@@ -4242,8 +4265,8 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                     </td>
                     {sortedShifts.map(sh=>{
                       const inCell = cellStaff(sh.id, roleOpt.v);
-                      const used = inShiftSet(sh.id);
-                      const availableStaff = staff.filter(s=>s.active && !used.has(s.id));
+                      // v1.22: chỉ loại người ĐÃ ở ô role NÀY (1 người được nhiều role khác trong cùng ca)
+                      const availableStaff = staff.filter(s=>s.active && !inCell.find(a=>a.staff_id===s.id));
                       return (
                         <td key={sh.id} style={{padding:7,verticalAlign:"top",borderRight:"1px solid #f5f5f5",background:roleOpt.bg+"50"}}>
                           <div style={{display:"flex",flexDirection:"column",gap:5,minHeight:40}}>
@@ -4251,8 +4274,8 @@ function ShiftSettings({shifts,setShifts,shiftAssignments,upsertAssignment,delet
                               const s=staff.find(x=>x.id===a.staff_id);
                               if(!s) return null;
                               return (
-                                <button key={s.id} onClick={()=>{ if(editing) draftRemove(sh.id,s.id); }}
-                                  title={editing?"Bấm để bỏ khỏi ca (nháp)":"Bật Sửa bảng để thay đổi"}
+                                <button key={s.id} onClick={()=>{ if(editing) draftRemove(sh.id,s.id,roleOpt.v); }}
+                                  title={editing?"Bấm để bỏ khỏi vai trò này (nháp)":"Bật Sửa bảng để thay đổi"}
                                   style={{display:"flex",alignItems:"center",gap:5,padding:"5px 8px",background:"#fff",border:`1px solid ${roleOpt.c}55`,borderRadius:"var(--r-pill)",cursor:editing?"pointer":"default",fontSize:11,textAlign:"left"}}>
                                   <div style={{width:18,height:18,borderRadius:"50%",background:roleOpt.bg,color:roleOpt.c,display:"flex",alignItems:"center",justifyContent:"center",fontSize:8.5,fontWeight:800,flexShrink:0}}>{inits(s.name)}</div>
                                   <span style={{color:"var(--text)",fontWeight:600,flex:1,minWidth:0,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{s.name}</span>
@@ -5182,8 +5205,8 @@ function App(){
   },[]);
   /* Composite key — không dùng diff wrapper, gọi DB trực tiếp + optimistic update */
   // v1.20: phân ca theo NGÀY — khóa là (day, shift_id, staff_id)
+  // v1.22: khóa gồm role → 1 người nhiều role/ca. role="off" = xoá MỌI role của người đó trong ca-ngày.
   const upsertAssignment = useCallback(async (day, shift_id, staff_id, role) => {
-    // Role "off" = xoá phân công khỏi ca ngày đó (không lưu rỗng vào DB)
     if (role === "off") {
       _setShiftAssignments(prev=>prev.filter(x=>!(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id)));
       const {error} = await sb.from("shift_assignments").delete().match({day,shift_id,staff_id});
@@ -5191,17 +5214,17 @@ function App(){
       return;
     }
     _setShiftAssignments(prev=>{
-      const ex = prev.find(x=>x.day===day && x.shift_id===shift_id && x.staff_id===staff_id);
-      return ex
-        ? prev.map(x=>(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id)?{...x,role}:x)
-        : [...prev,{day,shift_id,staff_id,role}];
+      const ex = prev.find(x=>x.day===day && x.shift_id===shift_id && x.staff_id===staff_id && x.role===role);
+      return ex ? prev : [...prev,{day,shift_id,staff_id,role}];
     });
     const {error} = await sb.from("shift_assignments").upsert({day,shift_id,staff_id,role});
     if (error) toast(`Lỗi phân ca: ${error.message}`,"error");
   },[]);
-  const deleteAssignment = useCallback(async (day, shift_id, staff_id) => {
-    _setShiftAssignments(prev=>prev.filter(x=>!(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id)));
-    const {error} = await sb.from("shift_assignments").delete().match({day,shift_id,staff_id});
+  // role=null → xoá tất cả role của người đó trong ca-ngày; ngược lại chỉ xoá đúng 1 role
+  const deleteAssignment = useCallback(async (day, shift_id, staff_id, role=null) => {
+    _setShiftAssignments(prev=>prev.filter(x=>!(x.day===day && x.shift_id===shift_id && x.staff_id===staff_id && (role==null || x.role===role))));
+    const match = role==null ? {day,shift_id,staff_id} : {day,shift_id,staff_id,role};
+    const {error} = await sb.from("shift_assignments").delete().match(match);
     if (error) toast(`Lỗi xoá phân ca: ${error.message}`,"error");
   },[]);
 
@@ -5626,7 +5649,9 @@ function App(){
   const currentShift = getCurrentShift(shifts);
   // v1.11: admin có thể tạm chạy như thành viên (adminMode==="member")
   const adminAsMember = currentUser?.isAdmin && adminMode==="member";
-  const effectiveRoleEarly = getEffectiveRole(currentShift, shiftAssignments, currentUser, adminAsMember);
+  // v1.22: mảng role hiệu lực (1 người nhiều role/ca); effectiveRole = role chính
+  const effectiveRoles = getEffectiveRoles(currentShift, shiftAssignments, currentUser, adminAsMember);
+  const effectiveRoleEarly = primaryRole(effectiveRoles);
   if (currentUser) { effectiveRoleRef.current = effectiveRoleEarly; currentUserRef.current = currentUser; }
   // v1.8: sync refs cho tgBroadcast
   currentShiftRef.current = currentShift;
@@ -5639,14 +5664,14 @@ function App(){
   const effectiveRole = effectiveRoleEarly;
 
   const SCREENS={
-    dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off" && saMatchDay(a,todayISO())).length} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
+    dashboard:{title:"Tổng quan",       sub:`${currentShift?currentShift.name+" · "+currentShift.start_at+"–"+currentShift.end_at:"Ngoài giờ làm việc"} · ${new Set(shiftAssignments.filter(a=>a.shift_id===currentShift?.id && a.role!=="off" && saMatchDay(a,todayISO())).map(a=>a.staff_id)).size} thành viên phân ca · 🟢 ${onlineUsers.length} đang online`,
                comp:<Dashboard orders={orders} staff={staff} currentUser={currentUser} deleteOrder={deleteOrder} viewDate={viewDate} setViewDate={setViewDate}/>},
     order:    {title:"Trực đơn",         sub:"Nhận & tạo đơn hàng · Tách KPI người sale",
-               comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
+               comp:<OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} effectiveRoles={effectiveRoles} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} deleteOrder={deleteOrder}/>},
     kitchen:  {title:"Pha chế (KDS)",    sub:"Kitchen Display System · Realtime",
                comp:<KitchenScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} toast={toast}/>},
     shipper:  {title:"Giao hàng",        sub:"Quản lý shipper & vận chuyển · KPI giải ngân",
-               comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>},
+               comp:<ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} effectiveRoles={effectiveRoles} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>},
     staff:    {title:"Nhân sự & KPI",    sub:"Phân công · Theo dõi KPI · Bảng xếp hạng",
                comp:<StaffScreen orders={orders} staff={staff} currentShift={currentShift} shiftAssignments={shiftAssignments} viewDate={viewDate} setViewDate={setViewDate}/>},
     report:   {title:"Báo cáo & Log",    sub:"Tổng kết cuối ca · Xuất dữ liệu CSV",
@@ -5711,16 +5736,16 @@ function App(){
     </button>
   );
 
-  // Đang nghỉ → màn rest
-  if (effectiveRole === "off") {
+  // Đang nghỉ (không có role nào trong ca) → màn rest
+  if (effectiveRoles.length === 0) {
     return <>
       <RestScreen user={currentUser} currentShift={currentShift} shifts={shifts} shiftAssignments={shiftAssignments} onLogout={handleLogout} adminAsMember={adminAsMember} onBackToAdmin={()=>setAdminMode("admin")}/>
       {bxhFab}{bxhEl}{adminMemberBar}
     </>;
   }
 
-  // v1.5: Shipper có app standalone riêng (không sidebar/topbar admin)
-  if (effectiveRole === "shipper") {
+  // v1.5: Shipper có app standalone riêng — chỉ khi DUY NHẤT role shipper (v1.22)
+  if (effectiveRoles.length===1 && effectiveRole === "shipper") {
     // Reuse logic action từ ShipperScreen handlers (định nghĩa inline ở đây để có setOrders/setProducts)
     const setSt = (oid,patch,msg,type="success") => {
       setOrders(os=>os.map(o=>o.id===oid?{...o,...patch}:o));
@@ -5748,8 +5773,8 @@ function App(){
     </>;
   }
 
-  // v1.5: Pha chế có app riêng (KitchenScreen + shell tối giản)
-  if (effectiveRole === "pha_che") {
+  // v1.5: Pha chế có app riêng — chỉ khi DUY NHẤT role pha_che (v1.22)
+  if (effectiveRoles.length===1 && effectiveRole === "pha_che") {
     return <>
       <RoleAppShell roleKey="pha_che" title="PHA CHẾ — KDS" icon="☕" bgColor="linear-gradient(135deg,#1E40AF,#1E3A8A)"
         currentUser={currentUser} currentShift={currentShift} connStatus={connStatus} onLogout={handleLogout} onlineUsers={onlineUsers}
@@ -5760,8 +5785,8 @@ function App(){
     </>;
   }
 
-  // v1.5: Trực đơn có app riêng — v1.18: thêm tab Giao hàng (truy cập + phân đơn shipper)
-  if (effectiveRole === "truc_don") {
+  // v1.5: Trực đơn có app riêng — v1.18 thêm tab Giao hàng; chỉ khi DUY NHẤT role truc_don (v1.22)
+  if (effectiveRoles.length===1 && effectiveRole === "truc_don") {
     const tdPending = orders.filter(o=>!["hoan_thanh","huy"].includes(o.st)).length;
     const tdShip    = orders.filter(o=>o.type==="ship"&&["san_sang","dang_giao"].includes(o.st)).length;
     const tdTabs = [
@@ -5788,16 +5813,16 @@ function App(){
         </div>
         <div style={{flex:1,overflow:"hidden",display:"flex",minHeight:0}}>
           {trucView==="shipper"
-            ? <ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>
-            : <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>}
+            ? <ShipperScreen orders={orders} setOrders={setOrders} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} effectiveRoles={effectiveRoles} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>
+            : <OrderScreen orders={orders} setOrders={setOrders} products={products} setProducts={setProducts} staff={staff} currentUser={currentUser} effectiveRole={effectiveRole} effectiveRoles={effectiveRoles} zones={zones} pickupLocs={pickupLocs} categories={categories} toast={toast} shiftAssignments={shiftAssignments} currentShift={currentShift} appConfig={appConfig}/>}
         </div>
       </RoleAppShell>
       {bxhFab}{bxhEl}{adminMemberBar}{flashEl}
     </>;
   }
 
-  // Lọc màn theo role thực tế
-  const allowed = ROLE_PERMS[effectiveRole] || [];
+  // Lọc màn theo role thực tế — HỢP quyền của TẤT CẢ role được phân (v1.22)
+  const allowed = [...new Set(effectiveRoles.flatMap(r=>ROLE_PERMS[r]||[]))];
   const activeScreen = allowed.includes(screen) ? screen : (allowed[0]||"dashboard");
   const cur = SCREENS[activeScreen];
 
@@ -5827,9 +5852,11 @@ function RestScreen({user,currentShift,shifts,shiftAssignments,onLogout}){
       .map(a=>{ const s=shById[a.shift_id]; return {s,day:a.day,role:a.role,start:new Date(`${a.day}T${(s.start_at||"00:00")}:00`).getTime()}; });
     if (!mine.length) return null;
     const up = mine.filter(x=>x.start>=now).sort((p,q)=>p.start-q.start);
-    if (up.length) return {...up[0],future:true};
-    const past = mine.filter(x=>x.start<now).sort((p,q)=>q.start-p.start);
-    return past.length ? {...past[0],future:false} : null;
+    const chosen = up.length ? {...up[0],future:true} : (()=>{const past=mine.filter(x=>x.start<now).sort((p,q)=>q.start-p.start);return past.length?{...past[0],future:false}:null;})();
+    if (!chosen) return null;
+    // v1.22: gộp mọi role của người đó trong đúng ca-ngày này
+    chosen.roles = [...new Set(mine.filter(x=>x.day===chosen.day && x.s.id===chosen.s.id).map(x=>x.role))];
+    return chosen;
   })();
   const [tc,bg] = (user.isAdmin?RC.admin:["#64748B","#F1F5F9"]);
   return (
@@ -5852,7 +5879,7 @@ function RestScreen({user,currentShift,shifts,shiftAssignments,onLogout}){
             <div style={{fontSize:10,color:nearest.future?"var(--or)":"#475569",fontWeight:800,marginBottom:3,letterSpacing:".3px"}}>{nearest.future?"⏭ CA SẮP TỚI CỦA BẠN":"⏮ CA GẦN NHẤT (VỪA RỒI)"}</div>
             <div style={{fontSize:13,fontWeight:700,color:"#212121"}}>{nearest.s.name} · {nearest.s.start_at}–{nearest.s.end_at}</div>
             <div style={{fontSize:11.5,color:"#212121",marginTop:2,fontWeight:600}}>📅 {isoWeekday(nearest.day)}, {isoToVN(nearest.day)}{nearest.day===todayISO()?" · hôm nay":""}</div>
-            <div style={{fontSize:11,color:"#767676",marginTop:2}}>Vai trò: <b style={{color:RC[nearest.role]?.[0]||"#475569"}}>{RL[nearest.role]||nearest.role}</b></div>
+            <div style={{fontSize:11,color:"#767676",marginTop:2}}>{(nearest.roles||[nearest.role]).length>1?"Vai trò: ":"Vai trò: "}{(nearest.roles||[nearest.role]).map((r,i)=><b key={r} style={{color:RC[r]?.[0]||"#475569"}}>{i>0?", ":""}{RL[r]||r}</b>)}</div>
           </div>
         ) : (
           <div style={{padding:"12px 14px",background:"#F1F5F9",borderRadius:10,marginBottom:16,fontSize:11.5,color:"#64748B",lineHeight:1.5}}>
