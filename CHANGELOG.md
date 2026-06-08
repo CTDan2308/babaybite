@@ -6,6 +6,11 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.23.0] — 2026-06-08 (+07)
+
+### Added
+- **Trưởng ca/Admin hoàn thành đơn trực tiếp:** thêm nút **"Hoàn thành"** trên mỗi thẻ đơn ở màn Trực đơn — dùng được cho cả **đơn không qua shipper** (đơn tại chỗ bị kẹt ở "sẵn sàng/chờ shipper"). Bấm sẽ xác nhận rồi chuyển đơn sang **Hoàn thành** và rời danh sách đang xử lý. Chỉ Trưởng ca/Admin thấy nút này.
+
 ## [1.22.0] — 2026-06-08 (+07)
 
 ### ⚠️ Migration

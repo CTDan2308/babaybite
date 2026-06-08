@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.22.0</title>
+<title>BaBayBite v1.23.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -295,7 +295,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.22.0";
+const VERSION = "1.23.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -1587,6 +1587,7 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
   const erole = effectiveRole || currentUser?.isAdmin && "admin" || "off";
   const roleSet = (effectiveRoles&&effectiveRoles.length)?effectiveRoles:[erole]; // v1.22: nhiều role/ca
   const canEditOrder = roleSet.some(r=>["truong_ca","truc_don","admin"].includes(r));
+  const canComplete  = roleSet.some(r=>["truong_ca","admin"].includes(r)); // v1.23: trưởng ca hoàn thành đơn (kể cả không qua shipper)
   const [editId,setEditId] = useState(null);
   const [cancelId,setCancelId] = useState(null);
   const [q,setQ] = useState("");            // v1.15: tìm đơn đang xử lý
@@ -1691,6 +1692,12 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
     const np=!o.paid; toast(np?`✓ ${oid}: đã thu tiền`:`${oid}: bỏ đánh dấu đã thu`, np?"success":"info");
     return {...o,paid:np};
   }));
+  // v1.23: trưởng ca/admin hoàn thành đơn trực tiếp (đơn tại chỗ / không qua shipper)
+  const completeOrder = oid => {
+    if (!confirm(`Đánh dấu HOÀN THÀNH đơn ${oid}? Đơn sẽ chuyển sang đã hoàn thành và rời danh sách đang xử lý.`)) return;
+    setOrders(os=>os.map(o=>o.id===oid?{...o,st:"hoan_thanh"}:o));
+    toast(`✓ Đã hoàn thành đơn ${oid}`,"success");
+  };
   // v1.15: lọc + tìm kiếm đơn đang xử lý (giảm sót đơn khi số lượng lớn)
   const ACTIVE_ST = ["moi","pha_che","san_sang","da_lay","dang_giao"];
   const qn = q.trim().toLowerCase();
@@ -2173,6 +2180,14 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
                     </button>
                   </div>
                   <div style={{display:"flex",gap:5}}>
+                    {canComplete && (
+                      <button onClick={()=>completeOrder(o.id)} title="Trưởng ca: đánh dấu hoàn thành (kể cả đơn không qua shipper)"
+                        style={{fontSize:11,padding:"5px 11px",borderRadius:"var(--r-sm)",background:"#16A34A",border:"none",color:"#fff",cursor:"pointer",fontWeight:700}}
+                        onMouseOver={e=>e.currentTarget.style.background="#15803D"}
+                        onMouseOut={e=>e.currentTarget.style.background="#16A34A"}>
+                        <i className="ti ti-circle-check" style={{fontSize:12,marginRight:2}}/>Hoàn thành
+                      </button>
+                    )}
                     {canEditOrder && (
                       <button onClick={()=>setEditId(o.id)} className="btn-ghost"
                         style={{fontSize:11,padding:"5px 11px",borderRadius:"var(--r-sm)",color:"var(--info)",borderColor:"#93C5FD"}}
