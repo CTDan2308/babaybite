@@ -6,6 +6,11 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.26.0] — 2026-06-08 (+07)
+
+### Changed
+- **Làm lại Bảng xếp hạng theo phong cách Dashboard:** xoá toàn bộ logic/UI BXH cũ (podium glow, chip selector). Mỗi hạng mục giờ là **1 card** đồng bộ với Dashboard: header có **icon box + tên + chip số người**, **podium top 3** dạng stat-card (accent gradient góc, viền vàng/bạc/đồng), và **bảng hạng 4–10** gọn gàng có hover. Vẫn hiển thị tất cả hạng mục cùng lúc và config-driven qua `BXH_DEFS`.
+
 ## [1.25.0] — 2026-06-08 (+07)
 
 ### Changed

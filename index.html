@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.25.0</title>
+<title>BaBayBite v1.26.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -128,6 +128,7 @@ button:not(:disabled):active{transform:translateY(1px)}
 @media (max-width:480px){
   .grid-stats-4{grid-template-columns:repeat(2,1fr)!important}
   .grid-stats-5{grid-template-columns:repeat(2,1fr)!important}
+  .bxh-podium{grid-template-columns:1fr!important}
   .hide-mobile{display:none!important}
 }
 </style>
@@ -300,7 +301,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.25.0";
+const VERSION = "1.26.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -4927,19 +4928,19 @@ function GeneralSettings({zones,setZones,pickupLocs=[],setPickupLocs,shift,setSh
    Dùng cho pha_che, truc_don (shipper có vỏ riêng ShipperApp).
 ══════════════════════════════════════════════════════════ */
 /* ══════════════════════════════════════════════════════════
-   v1.18 / v1.19: BẢNG XẾP HẠNG — config-driven, ai cũng xem được
-   ➕ Thêm tiêu chí mới = thêm 1 object vào BXH_DEFS (KHÔNG cần sửa UI).
-   Mỗi def: {key,label,short,icon,col,valLabel,fmtVal,sub,empty,rows(ctx)}
-   ctx={orders,staff,shiftAssignments}. rows() trả mảng đã sort + cắt top 10.
-   Top1 vô địch (glow) · Top2 bạc · Top3-4 đồng · Top5-10 thường.
+   v1.26: BẢNG XẾP HẠNG — viết lại theo phong cách Dashboard
+   Mỗi hạng mục = 1 .card: header (icon box + tên + chip) → podium
+   top 3 (stat-card accent góc) → bảng hạng 4-10. Tất cả hiển thị
+   cùng lúc, không chip chọn. Dùng được inline (tab) hoặc modal.
+   ➕ Thêm tiêu chí = thêm 1 object vào BXH_DEFS (KHÔNG cần sửa UI).
+   Mỗi def: {key,label,icon,col,valLabel,fmtVal,sub,empty,rows(ctx)}
 ══════════════════════════════════════════════════════════ */
 const BXH_TIERS = {
-  1:{emoji:"👑",col:"#B45309",grad:"linear-gradient(135deg,#FFFBEB,#FDE68A)",ring:"#F59E0B"},
-  2:{emoji:"🥈",col:"#475569",grad:"linear-gradient(135deg,#F8FAFC,#E2E8F0)",ring:"#94A3B8"},
-  3:{emoji:"🥉",col:"#9A3412",grad:"linear-gradient(135deg,#FFF7ED,#FED7AA)",ring:"#EA8C55"},
-  4:{emoji:"🥉",col:"#9A3412",grad:"linear-gradient(135deg,#FFF7ED,#FED7AA)",ring:"#EA8C55"},
+  1:{label:"Hạng 1",emoji:"🥇",col:"#B45309",ring:"#F59E0B",accent:"linear-gradient(135deg,#FFFBEB 0%,#FDE68A 100%)"},
+  2:{label:"Hạng 2",emoji:"🥈",col:"#475569",ring:"#CBD5E1",accent:"linear-gradient(135deg,#F8FAFC 0%,#E2E8F0 100%)"},
+  3:{label:"Hạng 3",emoji:"🥉",col:"#9A3412",ring:"#FDBA74",accent:"linear-gradient(135deg,#FFF7ED 0%,#FED7AA 100%)"},
 };
-// Gom nhóm: amtFn cộng dồn 'val', đếm 'cnt'; sort val desc → tie cnt desc; top 10
+// Gom theo người: cộng dồn 'val', đếm 'cnt'; sort val desc → tie cnt desc; top 10
 const bxhAgg = (items,keyFn,amtFn,staff) => {
   const m={};
   items.forEach(x=>{const k=keyFn(x); if(k==null) return; const e=m[k]=m[k]||{val:0,cnt:0}; e.val+=amtFn(x); e.cnt++;});
@@ -4947,115 +4948,119 @@ const bxhAgg = (items,keyFn,amtFn,staff) => {
     .sort((a,b)=>b.val-a.val||b.cnt-a.cnt).slice(0,10);
 };
 const BXH_DEFS = [
-  {key:"kpi", label:"KPI bán hàng", short:"KPI", icon:"ti-coin", col:"#EE4D2D",
-   valLabel:"Doanh thu", fmtVal:fmt, sub:r=>`${r.cnt} đơn`, empty:"Chưa có đơn hoàn thành nào",
+  {key:"kpi", label:"KPI bán hàng", icon:"ti-coin", col:"#EE4D2D",
+   valLabel:"Tổng doanh thu KPI", fmtVal:fmt, sub:r=>`${r.cnt} đơn`, empty:"Chưa có đơn hoàn thành nào",
    rows:({orders,staff})=>bxhAgg(orders.filter(o=>o.st==="hoan_thanh"), o=>o.kpi, o=>iTot(o), staff)},
-  {key:"ship", label:"Doanh thu Shipper", short:"Shipper", icon:"ti-motorbike", col:"#16A34A",
-   valLabel:"Doanh thu ship", fmtVal:fmt, sub:r=>`${r.cnt} đơn`, empty:"Chưa có đơn ship hoàn thành nào",
+  {key:"ship", label:"Doanh thu Shipper", icon:"ti-motorbike", col:"#16A34A",
+   valLabel:"Tổng phí ship", fmtVal:fmt, sub:r=>`${r.cnt} đơn`, empty:"Chưa có đơn ship hoàn thành nào",
    rows:({orders,staff})=>bxhAgg(orders.filter(o=>o.type==="ship"&&o.st==="hoan_thanh"), o=>o.sid, o=>o.dFee||0, staff)},
-  {key:"chamchi", label:"Chăm chỉ nhất", short:"Chăm chỉ", icon:"ti-calendar-check", col:"#7C3AED",
-   valLabel:"Số ca", fmtVal:n=>`${n} ca`, sub:null, empty:"Chưa có phân công ca nào",
+  {key:"chamchi", label:"Chăm chỉ nhất", icon:"ti-calendar-check", col:"#7C3AED",
+   valLabel:"Số ca được phân công", fmtVal:n=>`${n} ca`, sub:null, empty:"Chưa có phân công ca nào",
    rows:({shiftAssignments,staff})=>bxhAgg((shiftAssignments||[]).filter(a=>a.role&&a.role!=="off"), a=>a.staff_id, ()=>1, staff)},
   // ➕ Ví dụ tiêu chí tương lai (bật khi order có field người pha — hiện chưa lưu):
-  // {key:"phache", label:"Pha chế nhiều nhất", short:"Pha chế", icon:"ti-coffee", col:"#D97706",
-  //  valLabel:"Số đơn", fmtVal:n=>`${n} đơn`, sub:null, empty:"Chưa có dữ liệu pha chế",
+  // {key:"phache", label:"Pha chế nhiều nhất", icon:"ti-coffee", col:"#D97706",
+  //  valLabel:"Số đơn đã pha", fmtVal:n=>`${n} đơn`, sub:null, empty:"Chưa có dữ liệu pha chế",
   //  rows:({orders,staff})=>bxhAgg(orders.filter(o=>o.brewBy!=null), o=>o.brewBy, ()=>1, staff)},
 ];
 
+function BxhSection({def,rows}){
+  const podium = rows.slice(0,3);
+  const rest = rows.slice(3);
+  return (
+    <div className="card" style={{padding:18,marginBottom:14}}>
+      {/* header — kiểu Dashboard: icon box + tên + chip */}
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14,gap:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:9,minWidth:0}}>
+          <div style={{width:36,height:36,borderRadius:"var(--r-md)",background:def.col+"18",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"var(--sh-sm)"}}>
+            <i className={"ti "+def.icon} style={{fontSize:19,color:def.col}}/>
+          </div>
+          <div style={{minWidth:0}}>
+            <div style={{fontSize:13.5,fontWeight:700,color:"var(--text)",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{def.label}</div>
+            <div style={{fontSize:10.5,color:"var(--mut)"}}>{def.valLabel}</div>
+          </div>
+        </div>
+        <span className="chip" style={{flexShrink:0}}><i className="ti ti-users" style={{fontSize:12}}/>{rows.length} người</span>
+      </div>
+
+      {rows.length===0 ? (
+        <div style={{textAlign:"center",padding:"30px 12px",color:"var(--mut2)",fontSize:12}}>
+          <i className="ti ti-trophy-off" style={{fontSize:34,display:"block",marginBottom:8,opacity:.5}}/>
+          {def.empty}
+        </div>
+      ) : (
+        <>
+          {/* podium top 3 — stat-card accent góc kiểu Dashboard */}
+          <div className="bxh-podium" style={{display:"grid",gridTemplateColumns:`repeat(${podium.length},1fr)`,gap:10,marginBottom:rest.length?14:0}}>
+            {podium.map((r,i)=>{
+              const t=BXH_TIERS[i+1];
+              return (
+                <div key={r.id} className="card-hover" style={{padding:"13px 14px 12px",position:"relative",overflow:"hidden",borderRadius:"var(--r-md)",border:`1.5px solid ${t.ring}`,background:"#fff"}}>
+                  <div style={{position:"absolute",top:0,right:0,width:66,height:66,background:t.accent,borderRadius:"0 0 0 100%",opacity:.6}}/>
+                  <div style={{display:"flex",alignItems:"center",gap:6,position:"relative",marginBottom:9}}>
+                    <span style={{fontSize:22,lineHeight:1}}>{t.emoji}</span>
+                    <span style={{fontSize:10,fontWeight:800,color:t.col,textTransform:"uppercase",letterSpacing:.5}}>{t.label}</span>
+                  </div>
+                  <div style={{fontSize:14.5,fontWeight:800,color:"var(--text)",position:"relative",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{r.name}</div>
+                  <div style={{fontSize:18,fontWeight:900,color:def.col,position:"relative",marginTop:3,letterSpacing:-.3}}>{def.fmtVal(r.val)}</div>
+                  {def.sub && <div style={{fontSize:10.5,color:"var(--mut)",position:"relative",marginTop:1}}>{def.sub(r)}</div>}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* hạng 4-10 — bảng kiểu Dashboard */}
+          {rest.length>0 && (
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <tbody>
+                {rest.map((r,i)=>(
+                  <tr key={r.id} style={{borderBottom:"1px solid #F5F5F5",transition:"background .15s"}}
+                      onMouseOver={e=>e.currentTarget.style.background="#FAFAFA"}
+                      onMouseOut={e=>e.currentTarget.style.background="transparent"}>
+                    <td style={{padding:"9px 8px",width:36}}>
+                      <div style={{width:24,height:24,borderRadius:"50%",background:"#F1F5F9",color:"#64748B",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800}}>{i+4}</div>
+                    </td>
+                    <td style={{padding:"9px 8px",fontWeight:700,color:"var(--text)",maxWidth:0,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</td>
+                    {def.sub && <td style={{padding:"9px 8px",color:"var(--mut)",fontSize:11,textAlign:"right",whiteSpace:"nowrap"}}>{def.sub(r)}</td>}
+                    <td style={{padding:"9px 8px",fontWeight:800,color:def.col,textAlign:"right",whiteSpace:"nowrap"}}>{def.fmtVal(r.val)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Leaderboard({orders,staff,shiftAssignments=[],onClose=null}){
-  // v1.25: hiển thị TẤT CẢ tiêu chí cùng lúc (không chip chọn từng cái)
   const sections = useMemo(
     ()=>BXH_DEFS.map(def=>({def, rows:def.rows({orders,staff,shiftAssignments})})),
     [orders,staff,shiftAssignments]
   );
 
-  const Row = ({r,rank,def}) => {
-    const t = BXH_TIERS[rank];
-    const subTxt = def.sub ? def.sub(r) : null;
-    if (rank===1) return (
-      <div style={{borderRadius:"var(--r-lg)",padding:"16px 16px 14px",background:t.grad,border:`2px solid ${t.ring}`,animation:"champGlow 2.4s ease-in-out infinite",position:"relative",overflow:"hidden"}}>
-        <div style={{position:"absolute",top:-10,right:-6,fontSize:64,opacity:.12,transform:"rotate(12deg)"}}>🏆</div>
-        <div style={{display:"flex",alignItems:"center",gap:12,position:"relative"}}>
-          <div style={{fontSize:40,lineHeight:1,animation:"crownBob 2.2s ease-in-out infinite"}}>👑</div>
-          <div style={{flex:1,minWidth:0}}>
-            <div style={{fontSize:10.5,fontWeight:800,letterSpacing:1,color:t.col,textTransform:"uppercase"}}>★ Vô địch ★</div>
-            <div style={{fontSize:18,fontWeight:900,color:"#1f2937",lineHeight:1.15,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
-          </div>
-        </div>
-        <div style={{display:"flex",gap:8,marginTop:12}}>
-          <div style={{flex:1,background:"rgba(255,255,255,.65)",borderRadius:"var(--r-md)",padding:"7px 10px"}}>
-            <div style={{fontSize:9.5,fontWeight:700,color:t.col,textTransform:"uppercase",letterSpacing:.5}}>{def.valLabel}</div>
-            <div style={{fontSize:16,fontWeight:900,color:"#1f2937"}}>{def.fmtVal(r.val)}</div>
-          </div>
-          {subTxt && (
-            <div style={{background:"rgba(255,255,255,.65)",borderRadius:"var(--r-md)",padding:"7px 12px",textAlign:"center"}}>
-              <div style={{fontSize:9.5,fontWeight:700,color:t.col,textTransform:"uppercase",letterSpacing:.5}}>Chi tiết</div>
-              <div style={{fontSize:14,fontWeight:900,color:"#1f2937"}}>{subTxt}</div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-    const medal = rank<=4;
-    return (
-      <div style={{display:"flex",alignItems:"center",gap:11,padding:medal?"11px 13px":"9px 12px",borderRadius:"var(--r-md)",
-        background:medal?t.grad:"#fff",border:`1px solid ${medal?t.ring:"var(--bd)"}`}}>
-        <div style={{width:34,height:34,flexShrink:0,borderRadius:"50%",display:"flex",alignItems:"center",justifyContent:"center",
-          fontSize:medal?18:13,fontWeight:900,background:medal?"rgba(255,255,255,.7)":"#F1F5F9",color:medal?t.col:"#64748B"}}>
-          {medal?t.emoji:rank}
+  const inner = (
+    <>
+      {/* tiêu đề trang */}
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:40,height:40,borderRadius:"var(--r-md)",background:"linear-gradient(135deg,#FEF3C7,#FDE68A)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"var(--sh-sm)"}}>
+          <i className="ti ti-trophy" style={{fontSize:21,color:"#D97706"}}/>
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontSize:13.5,fontWeight:800,color:"#1f2937",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{r.name}</div>
-          {subTxt && <div style={{fontSize:10.5,color:"var(--mut2)",marginTop:1}}>{subTxt}</div>}
+          <div style={{fontSize:16,fontWeight:800,color:"var(--text)",letterSpacing:-.2}}>Bảng xếp hạng</div>
+          <div style={{fontSize:11.5,color:"var(--mut)"}}>Top 10 mỗi hạng mục · cập nhật realtime</div>
         </div>
-        <div style={{fontWeight:900,fontSize:14,color:medal?t.col:def.col}}>{def.fmtVal(r.val)}</div>
+        {onClose && <button onClick={onClose} aria-label="Đóng" style={{width:34,height:34,flexShrink:0,borderRadius:"50%",border:"1px solid var(--bd)",background:"#fff",cursor:"pointer",fontSize:16,color:"var(--mut2)",display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-x"/></button>}
       </div>
-    );
-  };
-
-  const body = (
-    <div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
-      <div style={{padding:onClose?"0 0 10px":"4px 0 10px",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <i className="ti ti-trophy" style={{fontSize:22,color:"#F59E0B"}}/>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:900,color:"#1f2937"}}>Bảng xếp hạng</div>
-            <div style={{fontSize:11,color:"var(--mut2)"}}>Top 10 · tất cả hạng mục</div>
-          </div>
-          {onClose && <button onClick={onClose} aria-label="Đóng" style={{width:32,height:32,borderRadius:"50%",border:"1px solid var(--bd)",background:"#fff",cursor:"pointer",fontSize:16,color:"var(--mut2)",display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-x"/></button>}
-        </div>
-      </div>
-      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:22,minHeight:0,paddingBottom:8}}>
-        {sections.map(({def,rows})=>(
-          <div key={def.key} style={{display:"flex",flexDirection:"column",gap:8}}>
-            {/* tiêu đề hạng mục */}
-            <div style={{display:"flex",alignItems:"center",gap:8,position:"sticky",top:0,zIndex:2,background:"var(--bg)",padding:"4px 0",borderBottom:`2px solid ${def.col}22`}}>
-              <div style={{width:28,height:28,flexShrink:0,borderRadius:"var(--r-md)",display:"flex",alignItems:"center",justifyContent:"center",background:def.col+"18",color:def.col}}>
-                <i className={"ti "+def.icon} style={{fontSize:16}}/>
-              </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontSize:14,fontWeight:900,color:"#1f2937",lineHeight:1.1}}>{def.label}</div>
-                <div style={{fontSize:10,color:"var(--mut2)"}}>{def.valLabel}</div>
-              </div>
-            </div>
-            {rows.length===0
-              ? <div style={{textAlign:"center",padding:"22px 16px",color:"var(--mut2)",background:"#fff",borderRadius:"var(--r-md)",border:"1px dashed var(--bd)"}}>
-                  <i className="ti ti-trophy-off" style={{fontSize:30,display:"block",marginBottom:6,opacity:.5}}/>
-                  <div style={{fontSize:11.5}}>{def.empty}</div>
-                </div>
-              : rows.map((r,i)=><Row key={r.id} r={r} rank={i+1} def={def}/>)
-            }
-          </div>
-        ))}
-      </div>
-    </div>
+      {sections.map(({def,rows})=><BxhSection key={def.key} def={def} rows={rows}/>)}
+    </>
   );
 
-  if (!onClose) return <div style={{flex:1,overflow:"hidden",padding:"14px 16px",maxWidth:560,width:"100%",margin:"0 auto"}}>{body}</div>;
+  if (!onClose) return <div style={{flex:1,overflowY:"auto",padding:18,background:"var(--bg)"}}>{inner}</div>;
   return (
     <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:3000,background:"rgba(15,23,42,.55)",backdropFilter:"blur(2px)",display:"flex",alignItems:"flex-end",justifyContent:"center",animation:"fadeIn .18s"}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg)",width:"100%",maxWidth:480,maxHeight:"88vh",borderRadius:"var(--r-lg) var(--r-lg) 0 0",padding:"16px 16px 0",display:"flex",flexDirection:"column",animation:"fadeUp .25s var(--ease)",boxShadow:"0 -8px 40px rgba(0,0,0,.3)"}}>
-        {body}
+      <div onClick={e=>e.stopPropagation()} style={{background:"var(--bg)",width:"100%",maxWidth:520,maxHeight:"90vh",overflowY:"auto",borderRadius:"var(--r-lg) var(--r-lg) 0 0",padding:18,animation:"fadeUp .25s var(--ease)",boxShadow:"0 -8px 40px rgba(0,0,0,.3)"}}>
+        {inner}
       </div>
     </div>
   );
