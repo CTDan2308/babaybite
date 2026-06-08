@@ -6,6 +6,11 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.25.0] — 2026-06-08 (+07)
+
+### Changed
+- **Bảng xếp hạng hiển thị tất cả hạng mục trên 1 màn:** bỏ thanh chip chọn từng tiêu chí. Giờ tất cả hạng mục (KPI bán hàng, Doanh thu Shipper, Chăm chỉ nhất, …) hiển thị **cùng lúc**, xếp dọc thành từng section có tiêu đề riêng (dính trên cùng khi cuộn). Vẫn config-driven — thêm tiêu chí mới chỉ cần thêm 1 object vào `BXH_DEFS`.
+
 ## [1.24.0] — 2026-06-08 (+07)
 
 ### Changed

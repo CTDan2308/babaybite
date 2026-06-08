@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.24.0</title>
+<title>BaBayBite v1.25.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -300,7 +300,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.24.0";
+const VERSION = "1.25.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -4963,11 +4963,13 @@ const BXH_DEFS = [
 ];
 
 function Leaderboard({orders,staff,shiftAssignments=[],onClose=null}){
-  const [sel,setSel] = useState(BXH_DEFS[0].key);
-  const def = BXH_DEFS.find(d=>d.key===sel) || BXH_DEFS[0];
-  const rows = useMemo(()=>def.rows({orders,staff,shiftAssignments}),[sel,orders,staff,shiftAssignments]);
+  // v1.25: hiển thị TẤT CẢ tiêu chí cùng lúc (không chip chọn từng cái)
+  const sections = useMemo(
+    ()=>BXH_DEFS.map(def=>({def, rows:def.rows({orders,staff,shiftAssignments})})),
+    [orders,staff,shiftAssignments]
+  );
 
-  const Row = ({r,rank}) => {
+  const Row = ({r,rank,def}) => {
     const t = BXH_TIERS[rank];
     const subTxt = def.sub ? def.sub(r) : null;
     if (rank===1) return (
@@ -5014,34 +5016,37 @@ function Leaderboard({orders,staff,shiftAssignments=[],onClose=null}){
   const body = (
     <div style={{display:"flex",flexDirection:"column",height:"100%",minHeight:0}}>
       <div style={{padding:onClose?"0 0 10px":"4px 0 10px",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:12}}>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
           <i className="ti ti-trophy" style={{fontSize:22,color:"#F59E0B"}}/>
           <div style={{flex:1}}>
             <div style={{fontSize:16,fontWeight:900,color:"#1f2937"}}>Bảng xếp hạng</div>
-            <div style={{fontSize:11,color:"var(--mut2)"}}>Top 10 · {def.label}</div>
+            <div style={{fontSize:11,color:"var(--mut2)"}}>Top 10 · tất cả hạng mục</div>
           </div>
           {onClose && <button onClick={onClose} aria-label="Đóng" style={{width:32,height:32,borderRadius:"50%",border:"1px solid var(--bd)",background:"#fff",cursor:"pointer",fontSize:16,color:"var(--mut2)",display:"flex",alignItems:"center",justifyContent:"center"}}><i className="ti ti-x"/></button>}
         </div>
-        {/* selector tiêu chí — chip cuộn ngang, scale cho nhiều tiêu chí */}
-        <div style={{display:"flex",gap:7,overflowX:"auto",paddingBottom:4,WebkitOverflowScrolling:"touch"}}>
-          {BXH_DEFS.map(d=>{
-            const on=sel===d.key;
-            return <button key={d.key} onClick={()=>setSel(d.key)} style={{flexShrink:0,padding:"8px 13px",border:`1.5px solid ${on?d.col:"var(--bd)"}`,borderRadius:"var(--r-pill)",cursor:"pointer",
-              fontSize:12.5,fontWeight:800,display:"flex",alignItems:"center",gap:6,transition:"all .15s",whiteSpace:"nowrap",
-              background:on?d.col:"#fff",color:on?"#fff":"var(--text2)"}}>
-              <i className={"ti "+d.icon} style={{fontSize:15}}/>{d.short}</button>;
-          })}
-        </div>
       </div>
-      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,minHeight:0,paddingBottom:8}}>
-        {rows.length===0
-          ? <div style={{textAlign:"center",padding:"50px 16px",color:"var(--mut2)"}}>
-              <i className="ti ti-trophy-off" style={{fontSize:46,display:"block",marginBottom:10,opacity:.5}}/>
-              <div style={{fontSize:13,fontWeight:600}}>Chưa có dữ liệu xếp hạng</div>
-              <div style={{fontSize:11,marginTop:4}}>{def.empty}</div>
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:22,minHeight:0,paddingBottom:8}}>
+        {sections.map(({def,rows})=>(
+          <div key={def.key} style={{display:"flex",flexDirection:"column",gap:8}}>
+            {/* tiêu đề hạng mục */}
+            <div style={{display:"flex",alignItems:"center",gap:8,position:"sticky",top:0,zIndex:2,background:"var(--bg)",padding:"4px 0",borderBottom:`2px solid ${def.col}22`}}>
+              <div style={{width:28,height:28,flexShrink:0,borderRadius:"var(--r-md)",display:"flex",alignItems:"center",justifyContent:"center",background:def.col+"18",color:def.col}}>
+                <i className={"ti "+def.icon} style={{fontSize:16}}/>
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:14,fontWeight:900,color:"#1f2937",lineHeight:1.1}}>{def.label}</div>
+                <div style={{fontSize:10,color:"var(--mut2)"}}>{def.valLabel}</div>
+              </div>
             </div>
-          : rows.map((r,i)=><Row key={r.id} r={r} rank={i+1}/>)
-        }
+            {rows.length===0
+              ? <div style={{textAlign:"center",padding:"22px 16px",color:"var(--mut2)",background:"#fff",borderRadius:"var(--r-md)",border:"1px dashed var(--bd)"}}>
+                  <i className="ti ti-trophy-off" style={{fontSize:30,display:"block",marginBottom:6,opacity:.5}}/>
+                  <div style={{fontSize:11.5}}>{def.empty}</div>
+                </div>
+              : rows.map((r,i)=><Row key={r.id} r={r} rank={i+1} def={def}/>)
+            }
+          </div>
+        ))}
       </div>
     </div>
   );
