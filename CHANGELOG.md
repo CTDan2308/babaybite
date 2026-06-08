@@ -6,6 +6,11 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.24.0] — 2026-06-08 (+07)
+
+### Changed
+- **Kéo chỉnh tỷ lệ hiển thị màn Trực đơn:** thêm **thanh kéo** giữa panel tạo đơn (trái) và danh sách đơn (phải). Kéo để tùy chỉnh độ rộng 2 phần trên desktop (hoặc chiều cao trên mobile), **bấm đúp** để về mặc định. Tỷ lệ được **ghi nhớ** (localStorage) cho lần sau.
+
 ## [1.23.0] — 2026-06-08 (+07)
 
 ### Added

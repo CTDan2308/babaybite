@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.23.0</title>
+<title>BaBayBite v1.24.0</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -102,6 +102,11 @@ button:not(:disabled):active{transform:translateY(1px)}
 .order-shell{display:flex;flex:1;overflow:hidden;background:var(--bg)}
 .order-left{flex:1;min-width:0;min-height:0;overflow:hidden;border-right:1px solid var(--bd);display:flex;flex-direction:column;background:#fff}
 .order-right{width:340px;flex-shrink:0;overflow-y:auto;padding:12px;background:var(--bg)}
+/* v1.24: thanh kéo chỉnh tỷ lệ 2 panel màn Trực đơn */
+.order-divider{flex-shrink:0;display:flex;align-items:center;justify-content:center;background:var(--bd);touch-action:none;transition:background .15s}
+.order-divider:hover,.order-divider:active{background:var(--orl)}
+.order-divider .grip{background:var(--mut2);border-radius:3px;transition:background .15s}
+.order-divider:hover .grip,.order-divider:active .grip{background:var(--or)}
 
 @media (max-width:900px){
   .order-right{width:300px}
@@ -295,7 +300,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.23.0";
+const VERSION = "1.24.0";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -1601,6 +1606,34 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
   const [noteFor,setNoteFor]= useState(null);
   const noteRef = useRef(null);
 
+  // v1.24: kéo chỉnh tỷ lệ 2 panel (trái tạo đơn · phải danh sách đơn) — lưu localStorage
+  const [splitMobile,setSplitMobile] = useState(()=>typeof window!=="undefined" && window.matchMedia("(max-width:768px)").matches);
+  const [rightW,setRightW] = useState(()=>{const v=+localStorage.getItem("clb_orderRightW");return (v>=260&&v<=760)?v:340;});
+  const [rightH,setRightH] = useState(()=>{const v=+localStorage.getItem("clb_orderRightH");return (v>=160&&v<=700)?v:300;});
+  useEffect(()=>{const mq=window.matchMedia("(max-width:768px)");const fn=e=>setSplitMobile(e.matches);mq.addEventListener("change",fn);return ()=>mq.removeEventListener("change",fn);},[]);
+  useEffect(()=>{localStorage.setItem("clb_orderRightW",String(rightW));},[rightW]);
+  useEffect(()=>{localStorage.setItem("clb_orderRightH",String(rightH));},[rightH]);
+  const startSplit = (e)=>{
+    const shell = e.currentTarget.parentElement; // .order-shell
+    const rect = shell.getBoundingClientRect();
+    const pt = ev => ev.touches ? ev.touches[0] : ev;
+    document.body.style.userSelect="none"; document.body.style.cursor=splitMobile?"row-resize":"col-resize";
+    const move = ev => {
+      if (ev.cancelable) ev.preventDefault();
+      const p = pt(ev);
+      if (splitMobile) setRightH(Math.min(Math.max(rect.bottom - p.clientY, 160), rect.height-200));
+      else setRightW(Math.min(Math.max(rect.right - p.clientX, 260), rect.width-360));
+    };
+    const up = ()=>{
+      window.removeEventListener("mousemove",move); window.removeEventListener("mouseup",up);
+      window.removeEventListener("touchmove",move); window.removeEventListener("touchend",up);
+      document.body.style.userSelect=""; document.body.style.cursor="";
+    };
+    window.addEventListener("mousemove",move); window.addEventListener("mouseup",up);
+    window.addEventListener("touchmove",move,{passive:false}); window.addEventListener("touchend",up);
+  };
+  const resetSplit = ()=>{ setRightW(340); setRightH(300); };
+
   // Reset KPI default when user changes
   useEffect(()=>{ setCart(c=>({...c,kpi:currentUser.id})); },[currentUser.id]);
 
@@ -1969,7 +2002,13 @@ function OrderScreen({orders,setOrders,products,setProducts,staff,currentUser,ef
         </div>
       </div>
 
-      <div className="order-right">
+      <div className="order-divider" onMouseDown={startSplit} onTouchStart={startSplit} onDoubleClick={resetSplit}
+        title="Kéo để chỉnh tỷ lệ hiển thị · Bấm đúp để về mặc định"
+        style={splitMobile?{height:9,cursor:"row-resize"}:{width:9,cursor:"col-resize"}}>
+        <div className="grip" style={splitMobile?{width:38,height:3}:{width:3,height:38}}/>
+      </div>
+
+      <div className="order-right" style={splitMobile?{height:rightH,maxHeight:"none",width:"100%",flex:"none"}:{width:rightW}}>
         {/* v1.17: tách 2 tab riêng — Đang xử lý vs Đặt trước (không xếp chung cho dễ nhìn) */}
         <div style={{position:"sticky",top:-12,marginTop:-12,padding:"12px 0 10px",background:"var(--bg)",zIndex:2,marginBottom:4}}>
           <div style={{display:"flex",gap:6,background:"#fff",border:"1px solid var(--bd)",borderRadius:"var(--r-md)",padding:4,boxShadow:"var(--sh-sm)"}}>
