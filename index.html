@@ -6,7 +6,7 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.26.0</title>
+<title>BaBayBite v1.26.1</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
@@ -301,7 +301,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.26.0";
+const VERSION = "1.26.1";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
@@ -2809,7 +2809,7 @@ function ShipperOrderCard({o,staff,actions,showShipper=true}){
   const sh = o.sid ? staff.find(x=>x.id===o.sid) : null;
   const stColor=ST[o.st]?.color||"var(--or)";
   return (
-    <div className="card card-hover" style={{borderRadius:"var(--r-md)",padding:0,background:"#fff",borderLeft:`3px solid ${stColor}`,overflow:"hidden"}}>
+    <div className="card card-hover" style={{borderRadius:"var(--r-md)",padding:0,background:"#fff",borderLeft:`3px solid ${stColor}`,overflow:"hidden",flexShrink:0}}>
       <div style={{padding:"11px 12px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6,gap:6,flexWrap:"wrap"}}>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3518,7 +3518,7 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
             <div style={{padding:"10px 14px",borderBottom:"1px solid #f0f0f0",display:"flex",alignItems:"center",gap:8,background:col.color+"08"}}>
               <Bdg s={col.key}/><span style={{fontSize:11,color:"#767676"}}>{col.items.length} đơn</span>
             </div>
-            <div style={{padding:10,display:"flex",flexDirection:"column",gap:8,maxHeight:480,overflowY:"auto"}}>
+            <div style={{padding:10,display:"flex",flexDirection:"column",gap:col.key==="hoan_thanh"?5:8,maxHeight:"min(72vh,680px)",overflowY:"auto"}}>
               {col.items.map(o=>{
                 let actions = null;
                 if (col.key==="san_sang") {
@@ -3557,6 +3557,17 @@ function ShipperScreen({orders,setOrders,setProducts,staff,currentUser,effective
                         <button onClick={()=>complete(o.id)} style={{flex:2,fontSize:10.5,padding:"7px",background:"linear-gradient(135deg,#22C55E,#15803D)",border:"none",borderRadius:"var(--r-sm)",color:"#fff",cursor:"pointer",fontWeight:700,boxShadow:"var(--sh-sm)"}}>✓ Đã giao</button>
                       </div>
                     </>
+                  );
+                }
+                if (col.key==="hoan_thanh") {
+                  const sh = o.sid ? staff.find(x=>x.id===o.sid) : null;
+                  return (
+                    <div key={o.id} style={{flexShrink:0,display:"flex",alignItems:"center",gap:8,padding:"7px 9px",background:"#fff",border:"1px solid #f0f0f0",borderLeft:"3px solid #15803d",borderRadius:"var(--r-sm)"}}>
+                      <span style={{fontFamily:"ui-monospace,monospace",fontSize:11.5,fontWeight:800,color:"#15803d",flexShrink:0}}>{o.id}</span>
+                      <span style={{fontSize:11.5,color:"var(--text)",fontWeight:600,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",flex:1,minWidth:0}}>{o.cus}</span>
+                      {sh&&<span style={{fontSize:10,color:"var(--mut)",whiteSpace:"nowrap",flexShrink:0,display:"inline-flex",alignItems:"center",gap:2}}><i className="ti ti-motorbike" style={{fontSize:11}}/>{sh.name.split(" ").slice(-1)[0]}</span>}
+                      <span style={{fontSize:11.5,color:"var(--or)",fontWeight:800,whiteSpace:"nowrap",flexShrink:0}}>{fmt(o.dFee)}</span>
+                    </div>
                   );
                 }
                 return <ShipperOrderCard key={o.id} o={o} staff={staff} actions={actions}/>;

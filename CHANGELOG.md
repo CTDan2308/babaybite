@@ -6,6 +6,15 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.26.1] — 2026-06-09 (+07)
+
+### Fixed
+- **Màn Giao hàng vỡ layout khi nhiều đơn:** card đơn bị nén thành vạch mỏng không đọc được khi cột có nhiều đơn (do là flex-child bị co lại) → thêm `flexShrink:0` để card luôn giữ chiều cao.
+
+### Changed
+- **Cột "Hoàn thành" dùng dòng gọn (compact):** đơn đã giao xong giờ hiển thị 1 dòng (mã đơn · khách · shipper · phí ship) thay vì full-card, giúp 29+ đơn vẫn đọc tốt và cuộn mượt.
+- Tăng chiều cao vùng cuộn mỗi cột lên `min(72vh,680px)` để tận dụng màn hình khi đơn nhiều.
+
 ## [1.26.0] — 2026-06-08 (+07)
 
 ### Changed
