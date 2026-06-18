@@ -6,6 +6,11 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.26.2] — 2026-06-18 (+07)
+
+### Fixed
+- **Trắng màn hình toàn app (critical):** link Babel không pin version tự kéo bản **8.0.1**; bản này đổi mặc định `preset-react` sang *automatic runtime* → chèn `import {jsx} from "react/jsx-runtime"` vào code compile → `<script type="text/babel">` ném `SyntaxError: Cannot use import statement outside a module` → React không render. App vỡ dù không sửa code (do CDN tự cập nhật). **Fix:** pin Babel về `@7` (mặc định classic runtime): `@babel/standalone/babel.min.js` → `@babel/standalone@7/babel.min.js`.
+
 ## [1.26.1] — 2026-06-09 (+07)
 
 ### Fixed

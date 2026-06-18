@@ -6,12 +6,13 @@
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
 <meta http-equiv="Pragma" content="no-cache"/>
 <meta http-equiv="Expires" content="0"/>
-<title>BaBayBite v1.26.1</title>
+<title>BaBayBite v1.26.2</title>
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.47.0/tabler-icons.min.css"/>
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<!-- PIN Babel v7: bản 8 đổi mặc định preset-react sang automatic runtime → tự chèn `import` → vỡ script (trắng màn hình). v7 mặc định classic runtime, an toàn cho text/babel. -->
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
 <style>
 :root{
   /* Brand (Shopee-inspired) */
@@ -301,7 +302,7 @@ const ROLE_PERMS = {
   admin:     ["dashboard","order","kitchen","shipper","staff","report","bxh","settings"],
   off:       [],
 };
-const VERSION = "1.26.1";
+const VERSION = "1.26.2";
 // Link web app — gắn vào tin nhắn Telegram để bấm mở nhanh
 const APP_URL = "https://ctdan2308.github.io/clb-banhang/";
 const TG_LINK = `\n🔗 <a href="${APP_URL}">Mở BaBayBite</a>`;
