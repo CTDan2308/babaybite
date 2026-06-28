@@ -6,6 +6,14 @@ Format theo [Keep a Changelog](https://keepachangelog.com/vi/1.1.0/), tuân th�
 
 ---
 
+## [1.27.0] — 2026-06-28 (+07)
+
+### Added
+- **Nút "Tổng kết đợt" (Excel + PDF)** ở đầu màn Báo cáo — tổng hợp toàn bộ đơn cả đợt, không dùng CSV.
+  - **Excel (.xlsx) 4 sheet riêng:** `Đơn hàng` (đầy đủ trường nhập vào: mã, ngày, giờ, khách, SĐT, loại, địa chỉ, sản phẩm, tạm tính, giảm giá, phí ship, tổng tiền, thanh toán, đã trả, trạng thái, người tạo, người KPI, shipper, hẹn giao, ghi chú, lý do hoàn) · `Dashboard` (chỉ số tổng quan + doanh thu theo ngày + sản phẩm bán chạy) · `Thành viên` (tên, số đơn KPI, doanh thu KPI — xếp cao→thấp, có dòng tổng) · `Shipper` (số đơn, phí ship, thưởng, giải ngân — xếp cao→thấp, có dòng tổng). Tiền để dạng số để tự cộng/lọc.
+  - **PDF visual:** mỗi phần 1 trang — Dashboard (thẻ chỉ số + biểu đồ cột doanh thu theo ngày & sản phẩm bán chạy), Thành viên (biểu đồ + bảng), Shipper (biểu đồ + bảng), Danh sách đơn (bảng). Render bằng html2canvas nên tiếng Việt chuẩn; tự tách trang khi dài.
+  - Thư viện (SheetJS, jsPDF, html2canvas) **tải lazy từ CDN** khi bấm nút → không phình thời gian tải app.
+
 ## [1.26.2] — 2026-06-18 (+07)
 
 ### Fixed
